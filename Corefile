@@ -1,0 +1,14 @@
+.:1053 {
+    forward . {$DNS_SERVER} {
+        policy sequential
+    }
+    archiver {$CONTENTWRITER_HOST} {$CONTENTWRITER_PORT}
+    resolve 8053
+    cache {
+        success 1048576 86400
+        denial 131072 3600
+        prefetch 5 1m 10%
+    }
+    log
+    prometheus 0.0.0.0:9153
+}
