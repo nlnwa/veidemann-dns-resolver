@@ -1,8 +1,6 @@
 .:1053 {
-    forward . {$DNS_SERVER} {
-        policy sequential
-    }
-    archiver {$CONTENTWRITER_HOST} {$CONTENTWRITER_PORT}
+    archiver {$CONTENT_WRITER_HOST} {$CONTENT_WRITER_PORT} {$DB_HOST} {$DB_PORT} {$DB_USER} {$DB_PASSWORD} {$DNS_SERVER}
+
     resolve 8053
     cache {
         success 1048576 86400

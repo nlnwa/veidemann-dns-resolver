@@ -1,7 +1,7 @@
 package archiver
 
 // Health implements the health.Healther interface.
-func (e Archiver) Health() bool {
+func (a *Archiver) Health() bool {
 	// More advanced plugins will check their state, i.e. are they
 	// synchronized correctly against their backend etc.
 

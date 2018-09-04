@@ -6,7 +6,7 @@ import (
 	"flag"
 	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
 	"time"
-	"golang.org/x/net/context"
+	"context"
 	"fmt"
 	"os"
 )

@@ -8,7 +8,7 @@ import (
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 
-	"golang.org/x/net/context"
+	"context"
 	"net"
 	"net/http"
 	"google.golang.org/grpc"
