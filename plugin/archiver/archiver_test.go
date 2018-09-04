@@ -5,14 +5,14 @@ import (
 
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/plugin/test"
-	r "gopkg.in/gorethink/gorethink.v4"
 	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	r "gopkg.in/gorethink/gorethink.v4"
 
-	"github.com/miekg/dns"
-	"context"
-	"github.com/coredns/coredns/plugin/forward"
-	"fmt"
 	"bytes"
+	"context"
+	"fmt"
+	"github.com/coredns/coredns/plugin/forward"
+	"github.com/miekg/dns"
 	"time"
 )
 
@@ -31,7 +31,7 @@ func TestExample(t *testing.T) {
 	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
 	addr := []string{s.Addr}
 	a := Archiver{Next: test.ErrorHandler(),
-		forward: forward.NewLookup(addr),
+		forward:        forward.NewLookup(addr),
 		UpstreamHostIp: "127.0.0.1",
 		Connection: &Connection{
 			contentWriterAddr: "localhost:5001",

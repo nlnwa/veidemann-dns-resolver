@@ -1,11 +1,11 @@
 package archiver
 
 import (
-	r "gopkg.in/gorethink/gorethink.v4"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
-	"google.golang.org/grpc"
 	"context"
 	"fmt"
+	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	"google.golang.org/grpc"
+	r "gopkg.in/gorethink/gorethink.v4"
 	"time"
 )
 

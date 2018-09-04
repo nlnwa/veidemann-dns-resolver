@@ -12,16 +12,16 @@ import (
 	"github.com/coredns/coredns/plugin/metrics"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 
-	"github.com/miekg/dns"
 	"context"
-	"time"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
-	"strings"
-	"github.com/golang/protobuf/ptypes"
 	"crypto/sha1"
-	r "gopkg.in/gorethink/gorethink.v4"
-	"github.com/coredns/coredns/request"
 	"github.com/coredns/coredns/plugin/forward"
+	"github.com/coredns/coredns/request"
+	"github.com/golang/protobuf/ptypes"
+	"github.com/miekg/dns"
+	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	r "gopkg.in/gorethink/gorethink.v4"
+	"strings"
+	"time"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use log.Info and

@@ -5,10 +5,10 @@ import (
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
 
-	"github.com/mholt/caddy"
-	"strconv"
 	"github.com/coredns/coredns/plugin/forward"
+	"github.com/mholt/caddy"
 	"gopkg.in/gorethink/gorethink.v4"
+	"strconv"
 )
 
 // init registers this plugin within the Caddy plugin framework. It uses "archiver" as the
@@ -26,7 +26,7 @@ func setup(c *caddy.Controller) error {
 	c.Next() // Ignore "archiver" and give us the next token.
 	args := c.RemainingArgs()
 
-	if len(args) != 7 {
+	if len(args) != 8 {
 		return plugin.Error("archiver", c.ArgErr())
 	}
 
@@ -42,11 +42,11 @@ func setup(c *caddy.Controller) error {
 	}
 	dbUser := args[4]
 	dbPassword := args[5]
-	database := "veidemann"
+	database := args[6]
 
 	a := &Archiver{
 		Connection:     NewConnection(dbHost, dbPort, dbUser, dbPassword, database, contentWriterHost, contentWriterPort),
-		UpstreamHostIp: args[6],
+		UpstreamHostIp: args[7],
 	}
 
 	// Add a startup function that will -- after all plugins have been loaded -- check if the
@@ -83,9 +83,16 @@ func (a *Archiver) OnStartup() (err error) {
 func (a *Archiver) OnShutdown() error {
 	a.forward.Close()
 
-	a.Connection.contentWriterClientConn.Close()
+	if a.Connection.contentWriterClient != nil {
+		if err := a.Connection.contentWriterClientConn.Close(); err != nil {
+			log.Errorf("Could not disconnect from Content Writer: %v", err)
+		}
+	}
+
 	if s, ok := a.Connection.dbSession.(*gorethink.Session); ok {
-		s.Close()
+		if err := s.Close(); err != nil {
+			log.Errorf("Could not disconnect from database: %v", err)
+		}
 	}
 	return nil
 }
