@@ -59,7 +59,7 @@ func (c *Connection) connect() error {
 		c.dbSession = dbSession
 	}
 
-	log.Debugf("Archiver is using contentwriter at: %s, and DB at: %s", c.contentWriterAddr, c.dbConnectOpts.Address)
+	log.Infof("Archiver is using contentwriter at: %s, and DB at: %s", c.contentWriterAddr, c.dbConnectOpts.Address)
 
 	return nil
 }

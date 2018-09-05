@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc"
 	"net"
 	"net/http"
+	"strconv"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use log.Info and
@@ -24,30 +25,33 @@ var (
 
 // Resolve is an example plugin to show how to write a plugin.
 type Resolve struct {
-	Next    plugin.Handler
-	Port    int
-	ln      net.Listener
-	lnSetup bool
-	mux     *http.ServeMux
-	addr    string
-	server  vm.DnsResolverServer
+	Next         plugin.Handler
+	Port         int
+	ln           net.Listener
+	lnSetup      bool
+	mux          *http.ServeMux
+	addr         string
+	server       vm.DnsResolverServer
+	upstreamPort int
 }
 
 // New returns a new instance of Resolve with the given address
 func NewServer(port int) *Resolve {
 	met := &Resolve{
-		Port: port,
-		addr: fmt.Sprintf("0.0.0.0:%d", port),
+		Port:         port,
+		addr:         fmt.Sprintf("0.0.0.0:%d", port),
+		upstreamPort: 53,
 	}
 
 	return met
 }
 
 func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.ResolveReply, error) {
+	log.Debugf("Got request: %v", request)
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
 	m.SetEdns0(4096, false)
-	in, err := dns.Exchange(m, "127.0.0.1:1053")
+	in, err := dns.Exchange(m, "127.0.0.1:"+strconv.Itoa(e.upstreamPort))
 	if err != nil {
 		log.Infof("Failed resolving %s: %v", request.GetHost(), err)
 		return nil, err
@@ -61,6 +65,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.
 			res.Port = request.Port
 			res.TextualIp = v.A.String()
 			res.RawIp = v.A.To4()
+			log.Debugf("Resolved %v into %v", request, res)
 			return res, nil
 		case *dns.AAAA:
 			res := &vm.ResolveReply{}
@@ -68,9 +73,10 @@ func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.
 			res.Port = request.Port
 			res.TextualIp = v.AAAA.String()
 			res.RawIp = v.AAAA.To16()
+			log.Debugf("Resolved %v into %v", request, res)
 			return res, nil
 		default:
-			log.Infof("Unhandled record: %v", v)
+			log.Debugf("Unhandled record: %v", v)
 		}
 	}
 
@@ -94,7 +100,6 @@ func (e *Resolve) OnStartup() error {
 
 	e.ln = ln
 	e.lnSetup = true
-	ListenAddr = e.ln.Addr().String() // For tests
 
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
@@ -129,7 +134,3 @@ func (e *Resolve) OnFinalShutdown() error {
 	e.lnSetup = false
 	return e.ln.Close()
 }
-
-// ListenAddr is assigned the address of the prometheus listener. Its use is mainly in tests where
-// we listen on "localhost:0" and need to retrieve the actual address.
-var ListenAddr string

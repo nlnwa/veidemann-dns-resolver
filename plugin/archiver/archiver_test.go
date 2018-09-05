@@ -31,8 +31,9 @@ func TestExample(t *testing.T) {
 	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
 	addr := []string{s.Addr}
 	a := Archiver{Next: test.ErrorHandler(),
-		forward:        forward.NewLookup(addr),
-		UpstreamHostIp: "127.0.0.1",
+		forward:      forward.NewLookup(addr),
+		UpstreamIp:   "127.0.0.1",
+		UpstreamPort: "53",
 		Connection: &Connection{
 			contentWriterAddr: "localhost:5001",
 			dbConnectOpts: r.ConnectOpts{

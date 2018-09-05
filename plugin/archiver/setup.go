@@ -7,7 +7,9 @@ import (
 
 	"github.com/coredns/coredns/plugin/forward"
 	"github.com/mholt/caddy"
+	"github.com/nlnwa/veidemann-dns-resolver/iputil"
 	"gopkg.in/gorethink/gorethink.v4"
+	"net"
 	"strconv"
 )
 
@@ -43,10 +45,15 @@ func setup(c *caddy.Controller) error {
 	dbUser := args[4]
 	dbPassword := args[5]
 	database := args[6]
+	upstreamIp, upstreamPort, err := iputil.IpAndPortForAddr(args[7], 53)
+	if err != nil {
+		return plugin.Error("archiver", c.Errf("Unable to resolve upstream DNS server: %v", err))
+	}
 
 	a := &Archiver{
-		Connection:     NewConnection(dbHost, dbPort, dbUser, dbPassword, database, contentWriterHost, contentWriterPort),
-		UpstreamHostIp: args[7],
+		Connection:   NewConnection(dbHost, dbPort, dbUser, dbPassword, database, contentWriterHost, contentWriterPort),
+		UpstreamIp:   upstreamIp,
+		UpstreamPort: upstreamPort,
 	}
 
 	// Add a startup function that will -- after all plugins have been loaded -- check if the
@@ -73,7 +80,7 @@ func setup(c *caddy.Controller) error {
 
 // OnStartup starts a goroutines for all proxies.
 func (a *Archiver) OnStartup() (err error) {
-	addr := []string{a.UpstreamHostIp}
+	addr := []string{net.JoinHostPort(a.UpstreamIp, a.UpstreamPort)}
 	a.forward = forward.NewLookup(addr)
 
 	return a.Connection.connect()
