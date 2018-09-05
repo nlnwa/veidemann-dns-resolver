@@ -30,7 +30,7 @@ func setup(c *caddy.Controller) error {
 	port, err := strconv.Atoi(args[0])
 
 	if err != nil {
-		return plugin.Error("resolve", c.Errf("Port not a number: %v", args[1]))
+		return plugin.Error("resolve", c.Errf("ContentWriterPort not a number: %v", args[1]))
 	}
 
 	var server = NewServer(port)

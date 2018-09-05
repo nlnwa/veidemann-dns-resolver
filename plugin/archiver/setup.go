@@ -5,13 +5,15 @@ import (
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
 
-	"github.com/mholt/caddy"
-	"strconv"
-	"fmt"
 	"github.com/coredns/coredns/plugin/forward"
+	"github.com/mholt/caddy"
+	"github.com/nlnwa/veidemann-dns-resolver/iputil"
+	"gopkg.in/gorethink/gorethink.v4"
+	"net"
+	"strconv"
 )
 
-// init registers this plugin within the Caddy plugin framework. It uses "example" as the
+// init registers this plugin within the Caddy plugin framework. It uses "archiver" as the
 // name, and couples it to the Action "setup".
 func init() {
 	caddy.RegisterPlugin("archiver", caddy.Plugin{
@@ -20,21 +22,38 @@ func init() {
 	})
 }
 
-// setup is the function that gets called when the config parser see the token "archive". Setup is responsible
-// for parsing any extra options the archive plugin may have. The first token this function sees is "archive".
+// setup is the function that gets called when the config parser see the token "archiver". Setup is responsible
+// for parsing any extra options the archiver plugin may have. The first token this function sees is "archiver".
 func setup(c *caddy.Controller) error {
-	c.Next() // Ignore "archive" and give us the next token.
+	c.Next() // Ignore "archiver" and give us the next token.
 	args := c.RemainingArgs()
 
-	if len(args) != 2 {
+	if len(args) != 8 {
 		return plugin.Error("archiver", c.ArgErr())
 	}
 
-	host := args[0]
-	port, err := strconv.Atoi(args[1])
-
+	contentWriterHost := args[0]
+	contentWriterPort, err := strconv.Atoi(args[1])
 	if err != nil {
-		return plugin.Error("archiver", c.Errf("Port not a number: %v", args[1]))
+		return plugin.Error("archiver", c.Errf("Content Writer Port not a number: %v", args[1]))
+	}
+	dbHost := args[2]
+	dbPort, err := strconv.Atoi(args[3])
+	if err != nil {
+		return plugin.Error("archiver", c.Errf("Database Port not a number: %v", args[3]))
+	}
+	dbUser := args[4]
+	dbPassword := args[5]
+	database := args[6]
+	upstreamIp, upstreamPort, err := iputil.IpAndPortForAddr(args[7], 53)
+	if err != nil {
+		return plugin.Error("archiver", c.Errf("Unable to resolve upstream DNS server: %v", err))
+	}
+
+	a := &Archiver{
+		Connection:   NewConnection(dbHost, dbPort, dbUser, dbPassword, database, contentWriterHost, contentWriterPort),
+		UpstreamIp:   upstreamIp,
+		UpstreamPort: upstreamPort,
 	}
 
 	// Add a startup function that will -- after all plugins have been loaded -- check if the
@@ -42,21 +61,11 @@ func setup(c *caddy.Controller) error {
 	// this metric once, hence the "once.Do".
 	c.OnStartup(func() error {
 		once.Do(func() { metrics.MustRegister(c, requestCount) })
-		return nil
+		return a.OnStartup()
 	})
 
-	addr := fmt.Sprintf("%s:%d", host, port)
-	log.Debugf("Archiver is using contentwriter at: %s", addr)
-	a := &Archiver{Host: host, Port: port, Addr: addr}
-
-	c.OnStartup(func() error {
-		upstream, err := GetUpstreamDns(c)
-		if err != nil {
-			return err
-		}
-
-		a.UpstreamHostIp = upstream
-		return nil
+	c.OnShutdown(func() error {
+		return a.OnShutdown()
 	})
 
 	// Add the Plugin to CoreDNS, so Servers can use it in their plugin chain.
@@ -69,29 +78,31 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-// Get the first upstream server configured for the froward plugin.
-// Ideally we would like to know which of the upstream servers is actually used for a request, but that is not possible
-// with the forward plugin, so this is the best we can do, and it is correct if only one upstream server is configured.
-func GetUpstreamDns(c *caddy.Controller) (string, error) {
-	m := dnsserver.GetConfig(c).Handler("forward")
-	if m == nil {
-		return "", fmt.Errorf("archiver requires forward plugin")
-	}
+// OnStartup starts a goroutines for all proxies.
+func (a *Archiver) OnStartup() (err error) {
+	addr := []string{net.JoinHostPort(a.UpstreamIp, a.UpstreamPort)}
+	a.forward = forward.NewLookup(addr)
 
-	x, ok := m.(*forward.Forward)
-	if !ok {
-		return "", fmt.Errorf("archiver requires forward plugin")
-	}
-
-	u := x.List()
-	if len(u) == 0 {
-		return "", fmt.Errorf("archiver requires forward plugin to be configured with an upstream server")
-	}
-	_, h, _, err := dnsserver.SplitProtocolHostPort(u[0].Addr())
-
-	if err != nil {
-		return "", err
-	}
-
-	return h, nil
+	return a.Connection.connect()
 }
+
+// OnShutdown stops all configured proxies.
+func (a *Archiver) OnShutdown() error {
+	a.forward.Close()
+
+	if a.Connection.contentWriterClient != nil {
+		if err := a.Connection.contentWriterClientConn.Close(); err != nil {
+			log.Errorf("Could not disconnect from Content Writer: %v", err)
+		}
+	}
+
+	if s, ok := a.Connection.dbSession.(*gorethink.Session); ok {
+		if err := s.Close(); err != nil {
+			log.Errorf("Could not disconnect from database: %v", err)
+		}
+	}
+	return nil
+}
+
+// Close is a synonym for OnShutdown().
+func (a *Archiver) Close() { a.OnShutdown() }
