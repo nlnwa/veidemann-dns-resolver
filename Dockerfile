@@ -24,7 +24,7 @@ RUN cd /go/src/github.com/nlnwa/veidemann-dns-resolver \
 FROM alpine:latest
 LABEL maintainer="Norsk nettarkiv"
 
-EXPOSE 53 53/udp 9153 8053
+EXPOSE 53 53/udp 9153 8053 8080
 ENV DNS_SERVER=8.8.8.8 \
     CONTENT_WRITER_HOST=contentwriter \
     CONTENT_WRITER_PORT=8080 \
