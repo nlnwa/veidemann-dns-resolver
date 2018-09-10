@@ -12,7 +12,6 @@ import (
 	"context"
 	"crypto/sha1"
 	"github.com/coredns/coredns/plugin/forward"
-	"github.com/coredns/coredns/request"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/miekg/dns"
 	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
@@ -43,23 +42,10 @@ func (a *Archiver) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	// Wrap.
 	pw := NewResponsePrinter(w, a.Connection, r.Question[0].Name, a.UpstreamIp)
 
-	state := request.Request{W: pw, Req: r}
-	msg, err := a.forward.Forward(state)
-	if err != nil {
-		log.Errorf("Upstream error %v", err)
-		if msg == nil {
-			return dns.RcodeServerFailure, err
-		} else {
-			return msg.Rcode, err
-		}
-	}
-
-	pw.WriteMsg(msg)
-
 	// Export metric with the server label set to the current server handling the request.
 	requestCount.WithLabelValues(metrics.WithServer(ctx)).Inc()
 
-	return msg.Rcode, nil
+	return a.forward.ServeDNS(ctx, pw, r)
 }
 
 // Name implements the Handler interface.

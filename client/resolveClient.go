@@ -1,14 +1,14 @@
 package main
 
 import (
+	"context"
+	"flag"
+	"fmt"
+	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
 	"google.golang.org/grpc"
 	"log"
-	"flag"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
-	"time"
-	"context"
-	"fmt"
 	"os"
+	"time"
 )
 
 var (
@@ -38,7 +38,7 @@ func main() {
 		flag.Usage()
 	}
 
-	for _, host := range(args) {
+	for _, host := range args {
 		start := time.Now()
 
 		response, err := client.Resolve(ctx, &vm.ResolveRequest{Host: host, Port: 80})

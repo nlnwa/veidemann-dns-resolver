@@ -25,6 +25,7 @@
     "plugin/debug",
     "plugin/etcd/msg",
     "plugin/forward",
+    "plugin/health",
     "plugin/log",
     "plugin/metrics",
     "plugin/metrics/vars",
@@ -292,6 +293,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "db1238f3ced37db6f5805961f6f1026afbb967b0b7494c5e1070acd8a97ab5d5"
+  inputs-digest = "6ac7926a3367454514deb57b3a38bb1a5a48fa6cdce343183250590f6d7b4a8c"
   solver-name = "gps-cdcl"
   solver-version = 1
