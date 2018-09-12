@@ -32,7 +32,7 @@ func TestExample(t *testing.T) {
 	addr := []string{s.Addr}
 	a := Archiver{Next: test.ErrorHandler(),
 		forward:      forward.NewLookup(addr),
-		UpstreamIp:   "127.0.0.1",
+		UpstreamIP:   "127.0.0.1",
 		UpstreamPort: "53",
 		Connection: &Connection{
 			contentWriterAddr: "localhost:5001",

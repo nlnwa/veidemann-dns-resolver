@@ -30,10 +30,10 @@ func setup(c *caddy.Controller) error {
 	port, err := strconv.Atoi(args[0])
 
 	if err != nil {
-		return plugin.Error("resolve", c.Errf("ContentWriterPort not a number: %v", args[1]))
+		return plugin.Error("resolve", c.Errf("DNS resolver port not a number: %v", args[1]))
 	}
 
-	var server = NewServer(port)
+	var server = NewResolver(port)
 
 	// Add a startup function that will -- after all plugins have been loaded -- check if the
 	// prometheus plugin has been used - if so we will export metrics. We can only register

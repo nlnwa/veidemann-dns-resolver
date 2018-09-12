@@ -1,6 +1,5 @@
-// Package example is a CoreDNS plugin that prints "example" to stdout on every packet received.
-//
-// It serves as an example CoreDNS plugin with numerous code comments.
+// Package resolve is a CoreDNS plugin that establishes a grpc endpoint listening for DnsResolver requests
+// and reformats them into ordinary dns requests wich in turn is sent to the ordinary CoreDNS endpoint.
 package resolve
 
 import (
@@ -23,7 +22,7 @@ var (
 	log = clog.NewWithPlugin("resolve")
 )
 
-// Resolve is an example plugin to show how to write a plugin.
+// Resolve is a plugin which converts requests from a DnsResolverServer (grpc) to an ordinary dns request.
 type Resolve struct {
 	Next         plugin.Handler
 	Port         int
@@ -35,8 +34,8 @@ type Resolve struct {
 	upstreamPort int
 }
 
-// New returns a new instance of Resolve with the given address
-func NewServer(port int) *Resolve {
+// NewResolver returns a new instance of Resolve with the given address
+func NewResolver(port int) *Resolve {
 	met := &Resolve{
 		Port:         port,
 		addr:         fmt.Sprintf("0.0.0.0:%d", port),
@@ -46,6 +45,7 @@ func NewServer(port int) *Resolve {
 	return met
 }
 
+// Resolve implements DnsResolverServer
 func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.ResolveReply, error) {
 	log.Debugf("Got request: %v", request)
 	m := new(dns.Msg)
@@ -83,6 +83,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.
 	return nil, &UnresolvableError{request.Host}
 }
 
+// UnresolvableError is sent as error for unresolvable DNS lookup
 type UnresolvableError struct {
 	Host string
 }
@@ -91,7 +92,7 @@ func (e *UnresolvableError) Error() string {
 	return fmt.Sprintf("Unresolvable host: %s", e.Host)
 }
 
-// OnStartup sets up the metrics on startup.
+// OnStartup sets up the grpc endpoint.
 func (e *Resolve) OnStartup() error {
 	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", e.Port))
 	if err != nil {
