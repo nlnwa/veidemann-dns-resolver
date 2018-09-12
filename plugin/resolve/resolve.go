@@ -1,5 +1,5 @@
 // Package resolve is a CoreDNS plugin that establishes a grpc endpoint listening for DnsResolver requests
-// and reformats them into ordinary dns requests wich in turn is sent to the ordinary CoreDNS endpoint.
+// and reformats them into ordinary dns requests which in turn is sent to the ordinary CoreDNS endpoint.
 package resolve
 
 import (
