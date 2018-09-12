@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Connection holds the connections for ContentWriter and Veidemann database
 type Connection struct {
 	dbConnectOpts           r.ConnectOpts
 	dbSession               r.QueryExecutor
@@ -17,6 +18,7 @@ type Connection struct {
 	contentWriterClientConn *grpc.ClientConn
 }
 
+// NewConnection creates a new Connection object
 func NewConnection(dbHost string, dbPort int, dbUser string, dbPassword string, dbName string, contentWriterHost string,
 	contentWriterPort int) *Connection {
 	c := &Connection{
@@ -32,6 +34,7 @@ func NewConnection(dbHost string, dbPort int, dbUser string, dbPassword string, 
 	return c
 }
 
+// connect establishes connections
 func (c *Connection) connect() error {
 	// Set up ContentWriterClient
 	var opts []grpc.DialOption

@@ -45,14 +45,14 @@ func setup(c *caddy.Controller) error {
 	dbUser := args[4]
 	dbPassword := args[5]
 	database := args[6]
-	upstreamIp, upstreamPort, err := iputil.IpAndPortForAddr(args[7], 53)
+	upstreamIP, upstreamPort, err := iputil.IPAndPortForAddr(args[7], 53)
 	if err != nil {
 		return plugin.Error("archiver", c.Errf("Unable to resolve upstream DNS server: %v", err))
 	}
 
 	a := &Archiver{
 		Connection:   NewConnection(dbHost, dbPort, dbUser, dbPassword, database, contentWriterHost, contentWriterPort),
-		UpstreamIp:   upstreamIp,
+		UpstreamIP:   upstreamIP,
 		UpstreamPort: upstreamPort,
 	}
 
@@ -80,7 +80,7 @@ func setup(c *caddy.Controller) error {
 
 // OnStartup starts a goroutines for all proxies.
 func (a *Archiver) OnStartup() (err error) {
-	addr := []string{net.JoinHostPort(a.UpstreamIp, a.UpstreamPort)}
+	addr := []string{net.JoinHostPort(a.UpstreamIP, a.UpstreamPort)}
 	a.forward = forward.NewLookup(addr)
 
 	return a.Connection.connect()

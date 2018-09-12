@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-// Resolve an address of the form 'host:port' into an IP and port,
+// IPAndPortForAddr resolves an address of the form 'host:port' into an IP and port,
 // using the default port if port part of address is missing
-func IpAndPortForAddr(addr string, defaultPort int) (string, string, error) {
+func IPAndPortForAddr(addr string, defaultPort int) (string, string, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		if strings.Contains(err.Error(), "missing port in address") {

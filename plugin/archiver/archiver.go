@@ -1,6 +1,5 @@
-// Package example is a CoreDNS plugin that prints "example" to stdout on every packet received.
-//
-// It serves as an example CoreDNS plugin with numerous code comments.
+// Package archiver is a CoreDNS plugin that forwards requests to an upstream server
+// and store the result to a Content Writer and also writes a log record.
 package archiver
 
 import (
@@ -24,10 +23,10 @@ import (
 // friends to log.
 var log = clog.NewWithPlugin("archiver")
 
-// Archiver is an example plugin to show how to write a plugin.
+// Archiver is an archiving forwarder plugin.
 type Archiver struct {
 	Next         plugin.Handler
-	UpstreamIp   string
+	UpstreamIP   string
 	UpstreamPort string
 	Connection   *Connection
 	forward      *forward.Forward
@@ -40,9 +39,9 @@ func (a *Archiver) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 	log.Debug("Received response")
 
 	// Wrap.
-	pw := NewResponsePrinter(w, a.Connection, r.Question[0].Name, a.UpstreamIp)
+	pw := NewResponsePrinter(w, a.Connection, r.Question[0].Name, a.UpstreamIP)
 
-	// Export metric with the server label set to the current server handling the request.
+	// Export metric with the Server label set to the current Server handling the request.
 	requestCount.WithLabelValues(metrics.WithServer(ctx)).Inc()
 
 	return a.forward.ServeDNS(ctx, pw, r)
@@ -56,21 +55,21 @@ type ResponsePrinter struct {
 	dns.ResponseWriter
 	FetchStart          time.Time
 	RequestedHost       string
-	UpstreamIp          string
+	UpstreamIP          string
 	payload             []byte
 	contentWriterClient vm.ContentWriterClient
 	dbSession           r.QueryExecutor
 }
 
 // NewResponsePrinter returns ResponseWriter.
-func NewResponsePrinter(w dns.ResponseWriter, connection *Connection, requestedHost string, upstreamIp string) *ResponsePrinter {
+func NewResponsePrinter(w dns.ResponseWriter, connection *Connection, requestedHost string, upstreamIP string) *ResponsePrinter {
 	return &ResponsePrinter{
 		ResponseWriter:      w,
 		contentWriterClient: connection.contentWriterClient,
 		dbSession:           connection.dbSession,
 		FetchStart:          time.Now().UTC(),
 		RequestedHost:       strings.Trim(requestedHost, "."),
-		UpstreamIp:          upstreamIp,
+		UpstreamIP:          upstreamIP,
 	}
 }
 
@@ -84,6 +83,9 @@ func (rp *ResponsePrinter) WriteMsg(res *dns.Msg) error {
 			record = v
 			break
 		case *dns.AAAA:
+			record = v
+			break
+		case *dns.PTR:
 			record = v
 			break
 		default:
@@ -134,7 +136,7 @@ func (rp *ResponsePrinter) writeContentwriter(record string) *vm.WriteReply {
 				TargetUri:      "dns:" + host,
 				StatusCode:     1,
 				FetchTimeStamp: ts,
-				IpAddress:      rp.UpstreamIp,
+				IpAddress:      rp.UpstreamIP,
 			},
 		},
 	}
@@ -176,7 +178,7 @@ func (rp *ResponsePrinter) writeCrawlLog(record *vm.WriteResponseMeta_RecordMeta
 		"discoveryPath":  "P",
 		"statusCode":     1,
 		"fetchTimeStamp": r.EpochTime(rp.FetchStart.Unix()),
-		"ipAddress":      rp.UpstreamIp,
+		"ipAddress":      rp.UpstreamIP,
 		"contentType":    "text/dns",
 		"size":           int64(len(rp.payload)),
 		"warcId":         record.GetWarcId(),
