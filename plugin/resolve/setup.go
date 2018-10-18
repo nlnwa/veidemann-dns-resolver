@@ -6,9 +6,10 @@ import (
 
 	"github.com/mholt/caddy"
 	"strconv"
+	"github.com/coredns/coredns/core/dnsserver"
 )
 
-// init registers this plugin within the Caddy plugin framework. It uses "example" as the
+// init registers this plugin within the Caddy plugin framework. It uses "resolve" as the
 // name, and couples it to the Action "setup".
 func init() {
 	caddy.RegisterPlugin("resolve", caddy.Plugin{
@@ -34,6 +35,19 @@ func setup(c *caddy.Controller) error {
 	}
 
 	var server = NewResolver(port)
+
+	c.OnStartup(func() error {
+		// Find the first configured handler
+		conf := dnsserver.GetConfig(c)
+		for _, d := range dnsserver.Directives {
+			h := conf.Handler(d)
+			if h != nil {
+				server.Next = h
+				break
+			}
+		}
+		return nil
+	})
 
 	// Add a startup function that will -- after all plugins have been loaded -- check if the
 	// prometheus plugin has been used - if so we will export metrics. We can only register

@@ -2,14 +2,14 @@
     archiver {$CONTENT_WRITER_HOST} {$CONTENT_WRITER_PORT} {$DB_HOST} {$DB_PORT} {$DB_USER} {$DB_PASSWORD} {$DB_NAME} {$DNS_SERVER}
 
     resolve 8053
-    cache {
-        success 1048576 86400
-        denial 131072 3600
-        prefetch 5 1m 10%
+    syncache {
+        eviction 1h
+        maxSizeMb 2048
     }
     log . {
         class denial error
     }
     prometheus 0.0.0.0:9153
     health :8080
+    #debug
 }

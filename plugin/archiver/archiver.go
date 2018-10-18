@@ -36,7 +36,7 @@ type Archiver struct {
 // in a Server.
 func (a *Archiver) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	// Debug log that we've have seen the query. This will only be shown when the debug plugin is loaded.
-	log.Debug("Received response")
+	log.Debugf("Got request: %v %v %v", r.Question[0].Name, dns.ClassToString[r.Question[0].Qclass], dns.TypeToString[r.Question[0].Qtype])
 
 	// Wrap.
 	pw := NewResponsePrinter(w, a.Connection, r.Question[0].Name, a.UpstreamIP)
@@ -50,10 +50,11 @@ func (a *Archiver) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Ms
 // Name implements the Handler interface.
 func (a *Archiver) Name() string { return "archiver" }
 
-// ResponsePrinter wrap a dns.ResponseWriter and will write example to standard output when WriteMsg is called.
+// ResponsePrinter wrap a dns.ResponseWriter.
 type ResponsePrinter struct {
 	dns.ResponseWriter
 	FetchStart          time.Time
+	FetchDurationMs     int64
 	RequestedHost       string
 	UpstreamIP          string
 	payload             []byte
@@ -99,7 +100,11 @@ func (rp *ResponsePrinter) WriteMsg(res *dns.Msg) error {
 	if record == nil {
 		//statusCode = -1
 	} else {
+		log.Debugf("Got response: %v", record)
+
 		res.Answer = []dns.RR{record}
+		// Get the fetch duration in ns, round and convert to ms
+		rp.FetchDurationMs = (time.Now().UTC().Sub(rp.FetchStart).Nanoseconds() + 500000) / 1000000
 		reply := rp.writeContentwriter(record.String())
 		rp.writeCrawlLog(reply.GetMeta().GetRecordMeta()[0])
 	}
@@ -178,6 +183,7 @@ func (rp *ResponsePrinter) writeCrawlLog(record *vm.WriteResponseMeta_RecordMeta
 		"discoveryPath":  "P",
 		"statusCode":     1,
 		"fetchTimeStamp": r.EpochTime(rp.FetchStart.Unix()),
+		"fetchTimeMs":    rp.FetchDurationMs,
 		"ipAddress":      rp.UpstreamIP,
 		"contentType":    "text/dns",
 		"size":           int64(len(rp.payload)),
@@ -194,6 +200,6 @@ func (rp *ResponsePrinter) writeCrawlLog(record *vm.WriteResponseMeta_RecordMeta
 	var response map[string]interface{}
 	err = res.One(&response)
 	if err != nil {
-		log.Error(err)
+		log.Errorf("Failed writing to DB. %v", err)
 	}
 }
