@@ -1,13 +1,13 @@
 package syncache
 
 import (
-	"github.com/coredns/coredns/plugin"
-	"github.com/mholt/caddy"
-	"time"
-	"strconv"
 	"fmt"
 	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
+	"github.com/mholt/caddy"
+	"strconv"
+	"time"
 )
 
 // init registers this plugin within the Caddy plugin framework. It uses "syncache" as the

@@ -4,9 +4,9 @@ import (
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
 
+	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/mholt/caddy"
 	"strconv"
-	"github.com/coredns/coredns/core/dnsserver"
 )
 
 // init registers this plugin within the Caddy plugin framework. It uses "resolve" as the

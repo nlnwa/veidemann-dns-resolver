@@ -8,13 +8,13 @@ import (
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 
 	"context"
+	"errors"
 	"github.com/miekg/dns"
 	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
 	"net"
 	"net/http"
-	"google.golang.org/grpc/peer"
-	"errors"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use log.Info and

@@ -2,9 +2,9 @@ package syncache
 
 import (
 	"github.com/allegro/bigcache"
-	"time"
-	"github.com/miekg/dns"
 	"github.com/coredns/coredns/plugin/pkg/response"
+	"github.com/miekg/dns"
+	"time"
 )
 
 // Cache is a wrapper around *bigcache.BigCache which takes care of marshalling and unmarshalling of dns.Msg.

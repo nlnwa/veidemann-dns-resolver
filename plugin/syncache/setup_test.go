@@ -9,15 +9,15 @@ import (
 
 func TestSetup(t *testing.T) {
 	tests := []struct {
-		input            string
-		shouldErr        bool
-		eviction     time.Duration
-		maxSizeMb     int
+		input     string
+		shouldErr bool
+		eviction  time.Duration
+		maxSizeMb int
 	}{
 		{`syncache`, false, defaultEviction, defaultMaxSizeMb},
 		{`syncache {
 				eviction 10s
-			}`, false, 10* time.Second, defaultMaxSizeMb},
+			}`, false, 10 * time.Second, defaultMaxSizeMb},
 		{`syncache {
 				maxSizeMb 1024
 			}`, false, defaultEviction, 1024},

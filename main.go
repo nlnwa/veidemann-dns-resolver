@@ -1,9 +1,9 @@
 package main
 
 import (
+	_ "github.com/coredns/coredns/plugin/debug"
 	_ "github.com/coredns/coredns/plugin/health"
 	_ "github.com/coredns/coredns/plugin/log"
-	_ "github.com/coredns/coredns/plugin/debug"
 	_ "github.com/coredns/coredns/plugin/metrics"
 	_ "github.com/coredns/coredns/plugin/whoami"
 	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/archiver"

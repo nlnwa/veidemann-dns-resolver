@@ -3,12 +3,12 @@ package resolve
 import (
 	"bytes"
 	"context"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
-	"testing"
-	"google.golang.org/grpc/peer"
-	"net"
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
+	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	"google.golang.org/grpc/peer"
+	"net"
+	"testing"
 )
 
 func TestExample(t *testing.T) {
