@@ -11,11 +11,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/forward"
 	"github.com/miekg/dns"
-	"time"
-	"github.com/coredns/coredns/plugin"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/syncache"
+	"time"
 )
 
 func TestExample(t *testing.T) {
@@ -33,8 +33,8 @@ func TestExample(t *testing.T) {
 	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
 	addr := []string{s.Addr}
 	a := Archiver{Next: test.ErrorHandler(),
-		forward: forward.NewLookup(addr),
-		UpstreamIP: "127.0.0.1",
+		forward:      forward.NewLookup(addr),
+		UpstreamIP:   "127.0.0.1",
 		UpstreamPort: "53",
 		Connection: &Connection{
 			contentWriterAddr: "localhost:5001",
@@ -142,8 +142,8 @@ func TestConcurrent(t *testing.T) {
 	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
 	addr := []string{s.Addr}
 	a := Archiver{Next: test.ErrorHandler(),
-		forward: forward.NewLookup(addr),
-		UpstreamIP: "127.0.0.1",
+		forward:      forward.NewLookup(addr),
+		UpstreamIP:   "127.0.0.1",
 		UpstreamPort: "53",
 		Connection: &Connection{
 			contentWriterAddr: "localhost:5001",

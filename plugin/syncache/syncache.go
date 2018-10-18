@@ -7,10 +7,10 @@ import (
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 
 	"context"
+	"github.com/coredns/coredns/plugin/metrics"
 	"github.com/miekg/dns"
 	"golang.org/x/sync/singleflight"
 	"time"
-	"github.com/coredns/coredns/plugin/metrics"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use log.Info and

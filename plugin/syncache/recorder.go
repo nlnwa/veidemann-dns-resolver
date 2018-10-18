@@ -1,10 +1,10 @@
 package syncache
 
 import (
-	"github.com/miekg/dns"
-	"github.com/coredns/coredns/plugin"
 	"context"
 	"errors"
+	"github.com/coredns/coredns/plugin"
+	"github.com/miekg/dns"
 	"net"
 )
 
@@ -96,14 +96,19 @@ func (r *Recorder) WriteRecordedMessage(rw dns.ResponseWriter, request *dns.Msg,
 }
 
 // Close implement the dns.ResponseWriter interface from Go DNS.
-func (r *Recorder) Close() error          { return nil }
+func (r *Recorder) Close() error { return nil }
+
 // TsigStatus implement the dns.ResponseWriter interface from Go DNS.
-func (r *Recorder) TsigStatus() error     { return nil }
+func (r *Recorder) TsigStatus() error { return nil }
+
 // TsigTimersOnly implement the dns.ResponseWriter interface from Go DNS.
 func (r *Recorder) TsigTimersOnly(b bool) { return }
+
 // Hijack implement the dns.ResponseWriter interface from Go DNS.
-func (r *Recorder) Hijack()               { return }
+func (r *Recorder) Hijack() { return }
+
 // LocalAddr implement the dns.ResponseWriter interface from Go DNS.
-func (r *Recorder) LocalAddr() net.Addr   { return r.localAddr }
+func (r *Recorder) LocalAddr() net.Addr { return r.localAddr }
+
 // RemoteAddr implement the dns.ResponseWriter interface from Go DNS.
-func (r *Recorder) RemoteAddr() net.Addr  { return r.remoteAddr }
+func (r *Recorder) RemoteAddr() net.Addr { return r.remoteAddr }
