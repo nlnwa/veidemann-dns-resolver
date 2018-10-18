@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	"io"
 	"strconv"
+	"sync"
 )
 
 // Server is used to implement ContentWriterServer.
@@ -20,6 +21,7 @@ type Server struct {
 	Payload *vm.Data
 	Meta    *vm.WriteRequestMeta
 	Cancel  string
+	m       sync.Mutex
 }
 
 // Write implements ContentWriterServer
@@ -35,14 +37,16 @@ func (s *Server) Write(stream vm.ContentWriter_WriteServer) error {
 
 		switch x := foo.Value.(type) {
 		case *vm.WriteRequest_Header:
+			s.m.Lock()
 			s.Header = x.Header
-			//fmt.Println("HEADER: ", x.Header)
+			s.m.Unlock()
 		case *vm.WriteRequest_Payload:
+			s.m.Lock()
 			s.Payload = x.Payload
-			//fmt.Println("PAYLOAD: ", x.Payload)
+			s.m.Unlock()
 		case *vm.WriteRequest_Meta:
+			s.m.Lock()
 			s.Meta = x.Meta
-			//fmt.Println("META: ", x.Meta)
 			stream.SendAndClose(
 				&vm.WriteReply{
 					Meta: &vm.WriteResponseMeta{
@@ -57,9 +61,11 @@ func (s *Server) Write(stream vm.ContentWriter_WriteServer) error {
 						},
 					},
 				})
+			s.m.Unlock()
 		case *vm.WriteRequest_Cancel:
+			s.m.Lock()
 			s.Cancel = x.Cancel
-			//fmt.Println("CANCEL: ", x.Cancel)
+			s.m.Unlock()
 		default:
 			return fmt.Errorf("Unexpected type %T", x)
 		}

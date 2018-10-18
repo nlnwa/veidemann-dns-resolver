@@ -82,6 +82,7 @@ func setup(c *caddy.Controller) error {
 func (a *Archiver) OnStartup() (err error) {
 	addr := []string{net.JoinHostPort(a.UpstreamIP, a.UpstreamPort)}
 	a.forward = forward.NewLookup(addr)
+	log.Infof("Archiver is using upstream DNS at: %s", addr)
 
 	return a.Connection.connect()
 }

@@ -3,35 +3,24 @@ package resolve
 import (
 	"bytes"
 	"context"
-	"github.com/coredns/coredns/plugin/pkg/dnstest"
+	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	"testing"
+	"google.golang.org/grpc/peer"
+	"net"
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
-	"strconv"
-	"strings"
-	"testing"
 )
 
 func TestExample(t *testing.T) {
-	s := dnstest.NewServer(func(w dns.ResponseWriter, r *dns.Msg) {
-		ret := new(dns.Msg)
-		ret.SetReply(r)
-		ret.Answer = append(ret.Answer, test.A("example.org. IN A 127.0.0.1"))
-		w.WriteMsg(ret)
-	})
-	defer s.Close()
-
-	server := NewServer(8053)
-	upstreamPort, err := strconv.Atoi(s.Addr[strings.LastIndex(s.Addr, ":")+1:])
-	if err != nil {
-		t.Error(err)
-	}
-	server.upstreamPort = upstreamPort
+	server := NewResolver(8053)
 	server.OnStartup()
 	defer server.OnFinalShutdown()
 
-	ctx := context.TODO()
+	a, _ := net.ResolveTCPAddr("tcp", "127.0.0.1")
+	p := &peer.Peer{Addr: a}
+	ctx := peer.NewContext(context.TODO(), p)
 
+	server.Next = MsgHandler(test.A("example.org. IN A 127.0.0.1"))
 	reply, err := server.Resolve(ctx, &vm.ResolveRequest{Host: "example.org", Port: 80})
 	if err != nil {
 		t.Error(err)
@@ -50,4 +39,15 @@ func TestExample(t *testing.T) {
 	if bytes.Compare(reply.RawIp, expectedBytes) != 0 {
 		t.Errorf("Expected RawIp to be %v, got: %v", expectedBytes, reply.RawIp)
 	}
+}
+
+// MsgHandler returns a Handler that adds answer to request and writes it to w.
+func MsgHandler(answer dns.RR) test.Handler {
+	return test.HandlerFunc(func(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+		reply := new(dns.Msg)
+		reply.SetReply(r)
+		reply.Answer = append(reply.Answer, answer)
+		w.WriteMsg(reply)
+		return reply.Rcode, nil
+	})
 }
