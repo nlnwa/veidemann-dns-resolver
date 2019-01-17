@@ -6,9 +6,8 @@ import (
 	_ "github.com/coredns/coredns/plugin/log"
 	_ "github.com/coredns/coredns/plugin/metrics"
 	_ "github.com/coredns/coredns/plugin/whoami"
-	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/archiver"
+	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/archivingcache"
 	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
-	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/syncache"
 
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/coremain"
@@ -20,8 +19,7 @@ var directives = []string{
 	"prometheus",
 	"resolve",
 	"log",
-	"syncache",
-	"archiver",
+	"archivingcache",
 	"whoami",
 }
 

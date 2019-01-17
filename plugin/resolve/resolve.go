@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"github.com/coredns/coredns/plugin"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
+	configV1 "github.com/nlnwa/veidemann-api-go/config/v1"
 
 	"context"
 	"errors"
 	"github.com/miekg/dns"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	dnsresolverV1 "github.com/nlnwa/veidemann-api-go/dnsresolver/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"net"
@@ -32,7 +33,7 @@ type Resolve struct {
 	lnSetup    bool
 	mux        *http.ServeMux
 	addr       string
-	server     vm.DnsResolverServer
+	server     dnsresolverV1.DnsResolverServer
 }
 
 // NewResolver returns a new instance of Resolve with the given address
@@ -46,10 +47,12 @@ func NewResolver(port int) *Resolve {
 }
 
 // Resolve implements DnsResolverServer
-func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.ResolveReply, error) {
+func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveRequest) (*dnsresolverV1.ResolveReply, error) {
 	m := new(dns.Msg)
 	m.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
 	m.SetEdns0(4096, false)
+	c := &COLLECTION{CollectionRef: request.CollectionRef}
+	m.Extra = append(m.Extra, c)
 
 	p, ok := peer.FromContext(ctx)
 	if !ok {
@@ -69,7 +72,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.
 		for _, answer := range w.Msg.Answer {
 			switch v := answer.(type) {
 			case *dns.A:
-				res := &vm.ResolveReply{}
+				res := &dnsresolverV1.ResolveReply{}
 				res.Host = request.Host
 				res.Port = request.Port
 				res.TextualIp = v.A.String()
@@ -77,7 +80,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *vm.ResolveRequest) (*vm.
 				log.Debugf("Resolved %v into %v", request, res)
 				return res, nil
 			case *dns.AAAA:
-				res := &vm.ResolveReply{}
+				res := &dnsresolverV1.ResolveReply{}
 				res.Host = request.Host
 				res.Port = request.Port
 				res.TextualIp = v.AAAA.String()
@@ -117,7 +120,7 @@ func (e *Resolve) OnStartup() error {
 
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
-	vm.RegisterDnsResolverServer(grpcServer, e)
+	dnsresolverV1.RegisterDnsResolverServer(grpcServer, e)
 
 	go func() {
 		log.Debugf("Resolve listening on port: %d", e.Port)
@@ -148,6 +151,13 @@ func (e *Resolve) OnFinalShutdown() error {
 	e.lnSetup = false
 	return e.ln.Close()
 }
+
+type COLLECTION struct {
+	dns.TXT
+	CollectionRef *configV1.ConfigRef
+}
+
+func (rr *COLLECTION) String() string { return rr.Hdr.String() + rr.CollectionRef.String() }
 
 type resolveResponse struct {
 	localAddr  net.Addr

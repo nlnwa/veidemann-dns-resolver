@@ -7,6 +7,7 @@ package forward
 import (
 	"context"
 
+	"github.com/coredns/coredns/plugin/pkg/transport"
 	"github.com/coredns/coredns/request"
 
 	"github.com/miekg/dns"
@@ -34,7 +35,6 @@ func (f *Forward) Forward(state request.Request) (*dns.Msg, error) {
 
 		ret, err := proxy.Connect(context.Background(), state, f.opts)
 
-		ret, err = truncated(state, ret, err)
 		upstreamErr = err
 
 		if err != nil {
@@ -49,6 +49,7 @@ func (f *Forward) Forward(state request.Request) (*dns.Msg, error) {
 			return state.ErrorMessage(dns.RcodeFormatError), nil
 		}
 
+		ret = state.Scrub(ret)
 		return ret, err
 	}
 
@@ -77,11 +78,11 @@ func (f *Forward) Lookup(state request.Request, name string, typ uint16) (*dns.M
 }
 
 // NewLookup returns a Forward that can be used for plugin that need an upstream to resolve external names.
-// Note that the caller must run Close on the forward to stop the health checking goroutines.
+// Note that the caller MUST run Close on the forward to stop the health checking goroutines.
 func NewLookup(addr []string) *Forward {
 	f := New()
 	for i := range addr {
-		p := NewProxy(addr[i], DNS)
+		p := NewProxy(addr[i], transport.DNS)
 		f.SetProxy(p)
 	}
 	return f

@@ -18,8 +18,8 @@ func init() {
 	})
 }
 
-// setup is the function that gets called when the config parser see the token "archive". Setup is responsible
-// for parsing any extra options the archive plugin may have. The first token this function sees is "archive".
+// setup is the function that gets called when the config parser see the token "resolve". Setup is responsible
+// for parsing any extra options the resolve plugin may have. The first token this function sees is "resolve".
 func setup(c *caddy.Controller) error {
 	c.Next() // Ignore "archive" and give us the next token.
 	args := c.RemainingArgs()
