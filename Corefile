@@ -1,10 +1,16 @@
 .:53 {
-    archiver {$CONTENT_WRITER_HOST} {$CONTENT_WRITER_PORT} {$DB_HOST} {$DB_PORT} {$DB_USER} {$DB_PASSWORD} {$DB_NAME} {$DNS_SERVER}
-
     resolve 8053
-    syncache {
+    archivingcache {
         eviction 1h
         maxSizeMb 2048
+        contentWriterHost {$CONTENT_WRITER_HOST}
+        contentWriterPort {$CONTENT_WRITER_PORT}
+        dbHost {$DB_HOST}
+        dbPort {$DB_PORT}
+        dbUser {$DB_USER}
+        dbPassword {$DB_PASSWORD}
+        dbName {$DB_NAME}
+        upstreamDNS {$DNS_SERVER}
     }
     log . {
         class denial error

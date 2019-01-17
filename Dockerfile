@@ -4,19 +4,12 @@ RUN apt-get update -qqy \
   && apt-get -qqy install unzip \
   && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-COPY scripts/protobuf-tools.sh /protobuf-tools.sh
-RUN cd / \
-    && ./protobuf-tools.sh
-
 COPY plugin /go/src/github.com/nlnwa/veidemann-dns-resolver/plugin
 COPY iputil /go/src/github.com/nlnwa/veidemann-dns-resolver/iputil
 COPY vendor /go/src/github.com/nlnwa/veidemann-dns-resolver/vendor
 COPY main.go /go/src/github.com/nlnwa/veidemann-dns-resolver/main.go
-COPY scripts/build-protobuf.sh /go/src/github.com/nlnwa/veidemann-dns-resolver/scripts/build-protobuf.sh
 
 RUN cd /go/src/github.com/nlnwa/veidemann-dns-resolver \
-    && ln -s /tools . \
-    && scripts/build-protobuf.sh \
     && go test -race ./... \
     && CGO_ENABLED=0 go build -tags netgo -o /coredns
 

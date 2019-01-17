@@ -5,7 +5,7 @@ import (
 	"context"
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
-	vm "github.com/nlnwa/veidemann-dns-resolver/veidemann_api"
+	dnsresolverV1 "github.com/nlnwa/veidemann-api-go/dnsresolver/v1"
 	"google.golang.org/grpc/peer"
 	"net"
 	"testing"
@@ -21,7 +21,7 @@ func TestExample(t *testing.T) {
 	ctx := peer.NewContext(context.TODO(), p)
 
 	server.Next = MsgHandler(test.A("example.org. IN A 127.0.0.1"))
-	reply, err := server.Resolve(ctx, &vm.ResolveRequest{Host: "example.org", Port: 80})
+	reply, err := server.Resolve(ctx, &dnsresolverV1.ResolveRequest{Host: "example.org", Port: 80})
 	if err != nil {
 		t.Error(err)
 	}
