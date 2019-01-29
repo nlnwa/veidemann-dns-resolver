@@ -114,8 +114,8 @@ func TestExample(t *testing.T) {
 	if cws.Meta.TargetUri != "dns:example.org" {
 		t.Errorf("Expected dns:example.org, got: %s", cws.Meta.TargetUri)
 	}
-	if cws.Meta.RecordMeta[0].Type != contentwriterV1.RecordType_RESOURCE {
-		t.Errorf("Expected %d, got: %d", contentwriterV1.RecordType_RESOURCE, cws.Meta.RecordMeta[0].Type)
+	if cws.Meta.RecordMeta[0].Type != contentwriterV1.RecordType_RESPONSE {
+		t.Errorf("Expected %d, got: %d", contentwriterV1.RecordType_RESPONSE, cws.Meta.RecordMeta[0].Type)
 	}
 	if cws.Meta.RecordMeta[0].RecordContentType != "text/dns" {
 		t.Errorf("Expected text/dns, got: %s", cws.Meta.RecordMeta[0].RecordContentType)
@@ -125,9 +125,6 @@ func TestExample(t *testing.T) {
 	}
 	if cws.Meta.RecordMeta[0].RecordNum != 0 {
 		t.Errorf("Expected 0, got: %d", cws.Meta.RecordMeta[0].Size)
-	}
-	if cws.Meta.StatusCode != 1 {
-		t.Errorf("Expected 1, got: %d", cws.Meta.StatusCode)
 	}
 
 	// Validate ContentWriters Payload record

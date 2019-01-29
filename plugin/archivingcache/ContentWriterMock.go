@@ -36,9 +36,9 @@ func (s *Server) Write(stream contentwriterV1.ContentWriter_WriteServer) error {
 		}
 
 		switch x := foo.Value.(type) {
-		case *contentwriterV1.WriteRequest_Header:
+		case *contentwriterV1.WriteRequest_ProtocolHeader:
 			s.m.Lock()
-			s.Header = x.Header
+			s.Header = x.ProtocolHeader
 			s.m.Unlock()
 		case *contentwriterV1.WriteRequest_Payload:
 			s.m.Lock()
