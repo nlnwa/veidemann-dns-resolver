@@ -176,7 +176,7 @@ func (rec *Recorder) writeContentwriter(record string) *contentwriterV1.WriteRep
 				RecordMeta: map[int32]*contentwriterV1.WriteRequestMeta_RecordMeta{
 					0: {
 						RecordNum:         0,
-						Type:              contentwriterV1.RecordType_RESOURCE,
+						Type:              contentwriterV1.RecordType_RESPONSE,
 						RecordContentType: "text/dns",
 						Size:              int64(len(rec.payload)),
 						BlockDigest:       digest,
@@ -184,7 +184,6 @@ func (rec *Recorder) writeContentwriter(record string) *contentwriterV1.WriteRep
 					},
 				},
 				TargetUri:      "dns:" + host,
-				StatusCode:     1,
 				FetchTimeStamp: ts,
 				IpAddress:      rec.UpstreamIP,
 				CollectionRef:  rec.collectionRef,

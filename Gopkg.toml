@@ -27,7 +27,7 @@ ignored = [
 
 [[constraint]]
   name = "github.com/nlnwa/veidemann-api-go"
-  version = "v1.0.0-beta2"
+  version = "v1.0.0-beta3"
 
 [[constraint]]
   name = "github.com/golang/protobuf"
