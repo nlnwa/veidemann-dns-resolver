@@ -50,7 +50,7 @@ func TestExample(t *testing.T) {
 	// Set the expected db queries
 	dbMock := a.Connection.dbSession.(*r.Mock)
 	dbQuery1 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
-		"recordType":          "response",
+		"recordType":          "resource",
 		"payloadDigest":       "pd",
 		"warcId":              "WarcId:collectionId",
 		"requestedUri":        "dns:example.org",
@@ -65,7 +65,7 @@ func TestExample(t *testing.T) {
 		"collectionFinalName": "cfn"}),
 	).Return(map[string]interface{}{"foo": "bar"}, nil)
 	dbQuery2 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
-		"recordType":          "response",
+		"recordType":          "resource",
 		"payloadDigest":       "pd",
 		"warcId":              "WarcId:collectionId2",
 		"requestedUri":        "dns:example.org",
@@ -114,8 +114,8 @@ func TestExample(t *testing.T) {
 	if cws.Meta.TargetUri != "dns:example.org" {
 		t.Errorf("Expected dns:example.org, got: %s", cws.Meta.TargetUri)
 	}
-	if cws.Meta.RecordMeta[0].Type != contentwriterV1.RecordType_RESPONSE {
-		t.Errorf("Expected %d, got: %d", contentwriterV1.RecordType_RESPONSE, cws.Meta.RecordMeta[0].Type)
+	if cws.Meta.RecordMeta[0].Type != contentwriterV1.RecordType_RESOURCE {
+		t.Errorf("Expected %d, got: %d", contentwriterV1.RecordType_RESOURCE, cws.Meta.RecordMeta[0].Type)
 	}
 	if cws.Meta.RecordMeta[0].RecordContentType != "text/dns" {
 		t.Errorf("Expected text/dns, got: %s", cws.Meta.RecordMeta[0].RecordContentType)
