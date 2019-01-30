@@ -176,7 +176,7 @@ func (rec *Recorder) writeContentwriter(record string) *contentwriterV1.WriteRep
 				RecordMeta: map[int32]*contentwriterV1.WriteRequestMeta_RecordMeta{
 					0: {
 						RecordNum:         0,
-						Type:              contentwriterV1.RecordType_RESPONSE,
+						Type:              contentwriterV1.RecordType_RESOURCE,
 						RecordContentType: "text/dns",
 						Size:              int64(len(rec.payload)),
 						BlockDigest:       digest,
@@ -223,7 +223,7 @@ func (rec *Recorder) writeContentwriter(record string) *contentwriterV1.WriteRep
 
 func (rec *Recorder) writeCrawlLog(record *contentwriterV1.WriteResponseMeta_RecordMeta) {
 	crawlLog := map[string]interface{}{
-		"recordType":          "response",
+		"recordType":          "resource",
 		"requestedUri":        "dns:" + strings.Trim(rec.RequestedHost, "."),
 		"discoveryPath":       "P",
 		"statusCode":          1,
