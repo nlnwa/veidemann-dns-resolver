@@ -60,9 +60,9 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 	key := r.Question[0].String()
 	server := metrics.WithServer(ctx)
 	miss := false
-	collectionRef := getCollectionRef(r)
 
 	v, _, shared := a.g.Do(key, func() (interface{}, error) {
+		collectionRef := getCollectionRef(r)
 		rec := NewRecorder(a, key, server, a.Connection, r.Question[0].Name, a.UpstreamIP, collectionRef)
 		if entry, err := a.cache.Get(key); err == nil {
 			log.Debugf("Found request in cache: %v = %v", key, entry)
@@ -82,9 +82,6 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 			}
 		} else {
 			log.Debugf("No request found in cache for: %v", key)
-			if collectionRef == nil {
-				log.Debugf("Collection ref missing in request '%v'. Response will not be stored", key)
-			}
 			a.forward.ServeDNS(ctx, rec, r)
 			miss = true
 		}

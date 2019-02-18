@@ -117,8 +117,12 @@ func (rec *Recorder) WriteMsg(res *dns.Msg) error {
 		res.Answer = []dns.RR{record}
 		// Get the fetch duration in ns, round and convert to ms
 		rec.FetchDurationMs = (time.Now().UTC().Sub(rec.FetchStart).Nanoseconds() + 500000) / 1000000
-		reply := rec.writeContentwriter(record.String())
-		rec.writeCrawlLog(reply.GetMeta().GetRecordMeta()[0])
+		if rec.collectionRef == nil {
+			log.Debugf("Collection ref missing in request '%v'. Response will not be stored", rec.key)
+		} else {
+			reply := rec.writeContentwriter(record.String())
+			rec.writeCrawlLog(reply.GetMeta().GetRecordMeta()[0])
+		}
 	}
 
 	return nil
