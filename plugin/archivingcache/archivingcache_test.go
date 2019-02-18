@@ -223,10 +223,15 @@ func TestConcurrent(t *testing.T) {
 	q := m.On(r.MockAnything()).Return(map[string]interface{}{"foo": "bar"}, nil)
 
 	ctx := context.TODO()
+	c := &resolve.COLLECTION{CollectionRef: &configV1.ConfigRef{Kind:configV1.Kind_collection, Id:"foo"}}
 	req1 := new(dns.Msg)
 	req1.SetQuestion("example.org.", dns.TypeA)
+	req1.SetEdns0(4096, false)
+	req1.Extra = append(req1.Extra, c)
 	req2 := new(dns.Msg)
 	req2.SetQuestion("example2.org.", dns.TypeA)
+	req2.SetEdns0(4096, false)
+	req2.Extra = append(req2.Extra, c)
 
 	// Call our plugin directly several times in parallel, and check the result.
 	it := 20
