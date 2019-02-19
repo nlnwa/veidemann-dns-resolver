@@ -3,11 +3,12 @@
 package archivingcache
 
 import (
+	"fmt"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/forward"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	configV1 "github.com/nlnwa/veidemann-api-go/config/v1"
+	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 
 	"context"
 	"github.com/coredns/coredns/plugin/metrics"
@@ -71,7 +72,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 			if collectionRef != nil && !entry.HasCollectionId(collectionRef.Id) {
 				log.Debugf("New collection for cached request: %v = %v", key, entry)
 				if l := len(entry.AddCollectionId(collectionRef.Id)); l == 1 {
-					log.Debugf("Request '%v' found in cache, but is previously not stored. " +
+					log.Debugf("Request '%v' found in cache, but is previously not stored. "+
 						"Response will be stored in collection '%v'", key, collectionRef.Id)
 				}
 
@@ -97,6 +98,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 
 	if rec.Rcode != dns.RcodeSuccess || rec.Err != nil || rec.Msg == nil || (len(rec.Msg.Answer) == 0 && len(rec.Msg.Question) > 0 && rec.Msg.Question[0].Qtype == dns.TypeA) {
 		log.Errorf("rcode: %v, err: %v, record: %v\n\n", rec.Rcode, rec.Err, rec.Msg)
+		return rec.Rcode, fmt.Errorf("rcode: %v, err: %v, record: %v\n\n", rec.Rcode, rec.Err, rec.Msg)
 	}
 
 	return rec.WriteRecordedMessage(w, r, shared)
