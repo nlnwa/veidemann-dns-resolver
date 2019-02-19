@@ -95,7 +95,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 	}
 	rec := v.(*Recorder)
 
-	if rec.Rcode != dns.RcodeSuccess || rec.Err != nil || (len(rec.Msg.Answer) == 0 && rec.Msg.Question[0].Qtype == dns.TypeA) {
+	if rec.Rcode != dns.RcodeSuccess || rec.Err != nil || rec.Msg == nil || (len(rec.Msg.Answer) == 0 && len(rec.Msg.Question) > 0 && rec.Msg.Question[0].Qtype == dns.TypeA) {
 		log.Errorf("rcode: %v, err: %v, record: %v\n\n", rec.Rcode, rec.Err, rec.Msg)
 	}
 
