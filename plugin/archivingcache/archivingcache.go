@@ -65,7 +65,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 	v, _, shared := a.g.Do(key, func() (interface{}, error) {
 		collectionRef := getCollectionRef(r)
 		rec := NewRecorder(a, key, server, a.Connection, r.Question[0].Name, a.UpstreamIP, collectionRef)
-		if entry, err := a.cache.Get(key); err == nil {
+		if entry, err := a.cache.Get(key); err == nil && len(entry.r.Answer) > 0 {
 			log.Debugf("Found request in cache: %v = %v", key, entry)
 			rec.SetMsg(entry.r)
 
