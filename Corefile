@@ -12,9 +12,9 @@
         dbName {$DB_NAME}
         upstreamDNS {$DNS_SERVER}
     }
-    log . {
-        class denial error
-    }
+#    log . {
+#        class denial error
+#    }
     prometheus 0.0.0.0:9153
     health :8080
     #debug
