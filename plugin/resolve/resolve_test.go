@@ -5,17 +5,15 @@ import (
 	"context"
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
-	dnsresolverV1 "github.com/nlnwa/veidemann-api-go/dnsresolver/v1"
+	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
 	"google.golang.org/grpc/peer"
 	"net"
 	"testing"
 )
 
 func TestExample(t *testing.T) {
-	server := NewResolver(8053)
-	server.OnStartup()
-	defer server.OnFinalShutdown()
-
+	server := NewResolver("8053")
+	defer func() { _ = server.OnStop() }()
 	a, _ := net.ResolveTCPAddr("tcp", "127.0.0.1")
 	p := &peer.Peer{Addr: a}
 	ctx := peer.NewContext(context.TODO(), p)
