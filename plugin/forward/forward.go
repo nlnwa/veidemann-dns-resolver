@@ -23,6 +23,8 @@ import (
 
 var log = clog.NewWithPlugin("forward")
 
+type ProxyKey struct{}
+
 // Forward represents a plugin instance that can proxy requests to another (DNS) server. It has a list
 // of proxies each representing one upstream proxy.
 type Forward struct {
@@ -159,6 +161,10 @@ func (f *Forward) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg
 				continue
 			}
 			break
+		}
+
+		if v, ok := ctx.Value(ProxyKey{}).(*string); ok {
+			*v = proxy.addr
 		}
 
 		// Check if the reply is correct; if not return FormErr.
