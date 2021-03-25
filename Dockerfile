@@ -1,25 +1,30 @@
-FROM golang:1.11
+FROM golang:1.15 as build
 
-RUN apt-get update -qqy \
-  && apt-get -qqy install unzip \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+WORKDIR /build
 
-COPY plugin /go/src/github.com/nlnwa/veidemann-dns-resolver/plugin
-COPY iputil /go/src/github.com/nlnwa/veidemann-dns-resolver/iputil
-COPY vendor /go/src/github.com/nlnwa/veidemann-dns-resolver/vendor
-COPY main.go /go/src/github.com/nlnwa/veidemann-dns-resolver/main.go
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN cd /go/src/github.com/nlnwa/veidemann-dns-resolver \
-    && go test -race ./... \
-    && CGO_ENABLED=0 go build -tags netgo -o /coredns
+COPY . .
+
+RUN go test ./...
+RUN CGO_ENABLED=0 go build -tags netgo
 
 
-FROM alpine:latest
+FROM gcr.io/distroless/base
 LABEL maintainer="Norsk nettarkiv"
 
-EXPOSE 53 53/udp 9153 8053 8080
+# dns port
+EXPOSE 53 53/udp
+# veidemann.api.dnsresolver.Resolve
+EXPOSE 8053
+# prometheus metrics
+EXPOSE 9153
+# readiness
+EXPOSE 8181
+
 ENV DNS_SERVER=8.8.8.8 \
-    CONTENT_WRITER_HOST=contentwriter \
+    CONTENT_WRITER_HOST=veidemann-contentwriter \
     CONTENT_WRITER_PORT=8080 \
     DB_HOST=localhost \
     DB_PORT=28015 \
@@ -27,7 +32,7 @@ ENV DNS_SERVER=8.8.8.8 \
     DB_PASSWORD=admin \
     DB_NAME=veidemann
 
-COPY --from=0 /coredns /coredns
-COPY Corefile /Corefile
+COPY --from=0 /build/veidemann-dns-resolver /veidemann-dns-resolver
+COPY Corefile.docker /Corefile
 
-ENTRYPOINT ["/coredns"]
+ENTRYPOINT ["/veidemann-dns-resolver"]

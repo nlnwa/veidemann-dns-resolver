@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/allegro/bigcache"
-	"github.com/coredns/coredns/plugin/pkg/response"
 	"github.com/miekg/dns"
 	"time"
 )
@@ -50,30 +49,21 @@ func NewCache(lifeWindow time.Duration, maxSizeMb int) (*Cache, error) {
 	}, nil
 }
 
-// Put writes a DNS response to the cache
-func (c *Cache) Put(key string, server string, cacheEntry *CacheEntry) error {
-	mt, _ := response.Typify(cacheEntry.r, c.now().UTC())
-	switch mt {
-	case response.NoError, response.Delegation, response.NameError, response.NoData:
-		entry, err := cacheEntry.pack()
-		if err != nil {
-			return err
-		}
-
-		err = c.cache.Set(key, entry)
-		log.Debugf("Record written to cache %s, %v", key, cacheEntry)
-		cacheSize.WithLabelValues(server, Success).Set(float64(c.cache.Len()))
-		return err
-
-	case response.OtherError:
-		// don't cache these
-	default:
-		log.Warningf("Caching called with unknown classification: %d", mt)
-	}
-	return nil
+func (c *Cache) Len() int {
+	return c.cache.Len()
 }
 
-// Get reads a DNS response from the cahce. It returns an EntryNotFoundError when no entry exists for the given key.
+// Set writes a DNS response to the cache
+func (c *Cache) Set(key string, entry *CacheEntry) error {
+	e, err := entry.pack()
+	if err != nil {
+		return err
+	}
+	err = c.cache.Set(key, e)
+	return err
+}
+
+// Get reads a DNS response from the cache. It returns an EntryNotFoundError when no entry exists for the given key.
 func (c *Cache) Get(key string) (*CacheEntry, error) {
 	data, err := c.cache.Get(key)
 	if err != nil {
@@ -89,18 +79,29 @@ func (c *Cache) Get(key string) (*CacheEntry, error) {
 }
 
 type CacheEntry struct {
-	collectionIds []string
-	r             *dns.Msg
+	ProxyAddr     string
+	CollectionIds []string
+	Msg           *dns.Msg
 }
 
 func (ce *CacheEntry) pack() ([]byte, error) {
 	var packed []byte
-	for _, v := range ce.collectionIds {
+
+	// proxy addr
+	if len(ce.ProxyAddr) > 0 {
+		packed = append(packed, ce.ProxyAddr...)
+		packed = append(packed, '|')
+	}
+
+	// collection ids
+	for _, v := range ce.CollectionIds {
 		packed = append(packed, v...)
 		packed = append(packed, ':')
 	}
 	packed = append(packed, ':')
-	entry, err := ce.r.Pack()
+
+	// dns message
+	entry, err := ce.Msg.Pack()
 	if err != nil {
 		return nil, err
 	}
@@ -109,15 +110,25 @@ func (ce *CacheEntry) pack() ([]byte, error) {
 }
 
 func (ce *CacheEntry) unpack(entry []byte) error {
+	// proxy address
+	idx := bytes.IndexByte(entry, '|')
+	if idx != -1 {
+		ce.ProxyAddr = string(entry[:idx])
+		entry = entry[idx+1:]
+	}
+
+	// collection ids
 	for entry[0] != ':' {
 		idx := bytes.IndexByte(entry, ':')
 		if idx == -1 {
-			return fmt.Errorf("Error unpacking collections from cache entry")
+			return fmt.Errorf("error unpacking collections from cache entry")
 		}
-		ce.collectionIds = append(ce.collectionIds, string(entry[:idx]))
+		ce.CollectionIds = append(ce.CollectionIds, string(entry[:idx]))
 		entry = entry[idx+1:]
 	}
 	entry = entry[1:]
+
+	// dns message
 	m := new(dns.Msg)
 	err := m.Unpack(entry)
 	if err != nil {
@@ -125,21 +136,21 @@ func (ce *CacheEntry) unpack(entry []byte) error {
 	}
 
 	m.Authoritative = false
-	ce.r = m
+	ce.Msg = m
 	return nil
 }
 
 func (ce *CacheEntry) AddCollectionId(collectionId string) []string {
-	ce.collectionIds = append(ce.collectionIds, collectionId)
-	return ce.collectionIds
+	ce.CollectionIds = append(ce.CollectionIds, collectionId)
+	return ce.CollectionIds
 }
 
 func (ce *CacheEntry) HasCollectionId(collectionId string) bool {
 	if collectionId == "" {
 		return true
 	}
-	for _, cid := range ce.collectionIds {
-		if collectionId == cid {
+	for _, cid := range ce.CollectionIds {
+		if cid == collectionId {
 			return true
 		}
 	}
@@ -147,12 +158,5 @@ func (ce *CacheEntry) HasCollectionId(collectionId string) bool {
 }
 
 func (ce *CacheEntry) String() string {
-	return fmt.Sprintf("CollectionIds: %v, dns.Msg: %v", ce.collectionIds, ce.r)
+	return fmt.Sprintf("proxy: %s, collections: %v", ce.ProxyAddr, ce.CollectionIds)
 }
-
-const (
-	// Success is the class for caching positive caching.
-	Success = "success"
-	// Denial is the class defined for negative caching.
-	Denial = "denial"
-)

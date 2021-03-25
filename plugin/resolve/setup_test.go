@@ -3,7 +3,7 @@ package resolve
 import (
 	"testing"
 
-	"github.com/mholt/caddy"
+	"github.com/coredns/caddy"
 )
 
 // TestSetup tests the various things that should be parsed by setup.
@@ -14,7 +14,7 @@ func TestSetup(t *testing.T) {
 		t.Fatalf("Expected no errors, but got: %v", err)
 	}
 
-	c = caddy.NewTestController("dns", `resolve`)
+	c = caddy.NewTestController("dns", `resolve 8053 443`)
 	if err := setup(c); err == nil {
 		t.Fatalf("Expected errors, but got: %v", err)
 	}

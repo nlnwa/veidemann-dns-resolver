@@ -1,102 +1,132 @@
 package archivingcache
 
 import (
+	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/transport"
+
+	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/plugin/test"
-	configV1 "github.com/nlnwa/veidemann-api-go/config/v1"
-	contentwriterV1 "github.com/nlnwa/veidemann-api-go/contentwriter/v1"
-	r "gopkg.in/gorethink/gorethink.v4"
+	configV1 "github.com/nlnwa/veidemann-api/go/config/v1"
+	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
+	r "gopkg.in/rethinkdb/rethinkdb-go.v6"
 
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/forward"
 	"github.com/miekg/dns"
 	"time"
 )
 
 func TestExample(t *testing.T) {
 	s := dnstest.NewServer(func(w dns.ResponseWriter, r *dns.Msg) {
-		ret := new(dns.Msg)
-		ret.SetReply(r)
-		ret.Answer = append(ret.Answer, test.A("example.org. IN A 127.0.0.1"))
-		w.WriteMsg(ret)
+		msg := new(dns.Msg)
+		msg.SetReply(r)
+		msg.Answer = append(msg.Answer, test.A("example.org. IN A 127.0.0.1"))
+		err := w.WriteMsg(msg)
+		if err != nil {
+			t.Errorf("failed to write reply: %v", err)
+		}
 	})
 	defer s.Close()
 
-	cws := NewCWServer(5001)
+	ctx := context.WithValue(context.Background(), dnsserver.Key{}, &dnsserver.Server{
+		Addr: s.Addr,
+	})
+
+	// Setup forward plugin with server as proxy
+	next := forward.New()
+	next.SetProxy(forward.NewProxy(s.Addr, transport.DNS))
+
+	// Setup contentWriter mock
+	cws := NewContentWriterServerMock(5001)
 	defer cws.Close()
 
-	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
-	addr := []string{s.Addr}
-	conn := &Connection{
-		contentWriterAddr: "localhost:5001",
-		dbConnectOpts: r.ConnectOpts{
-			Database: "mock",
-		},
+	// Setup database mock
+	dbOpts := r.ConnectOpts{
+		Address:  "mock",
+		Database: "mock",
 	}
-	a, _ := NewArchivingCache(10*time.Second, 1024, "127.0.0.1", "53", conn)
-	a.Next = test.ErrorHandler()
-	a.forward = forward.NewLookup(addr)
-	a.Connection.connect()
+	dbMock := r.NewMock(dbOpts)
+	db := &database{
+		ConnectOpts: dbOpts,
+		Session:     dbMock,
+	}
 
-	defer a.Close()
+	// Setup cache
+	ca, err := NewCache(10*time.Second, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Setup contentWriter client
+	cwc := NewContentWriterClient("localhost", 5001)
 
-	// Set the expected db queries
-	dbMock := a.Connection.dbSession.(*r.Mock)
+	// Setup plugin with cache, database mock and content writer mock
+	a := NewArchivingCache(ca, db, cwc)
+	a.Next = next
+	err = a.OnStartup()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = a.Close() }()
+
+	// Set the want db queries
 	dbQuery1 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
 		"recordType":          "resource",
 		"payloadDigest":       "pd",
-		"warcId":              "WarcId:collectionId",
+		"warcId":              "WarcId:collectionId1",
 		"requestedUri":        "dns:example.org",
-		"ipAddress":           "127.0.0.1",
+		"ipAddress":           s.Addr,
 		"size":                int64(48),
 		"statusCode":          1,
 		"blockDigest":         "bd",
 		"discoveryPath":       "P",
-		"fetchTimeStamp":      r.EpochTime(r.MockAnything()),
+		"timeStamp":           r.MockAnything(),
+		"fetchTimeStamp":      r.MockAnything(),
 		"fetchTimeMs":         r.MockAnything(),
+		"storageRef":          "ref",
 		"contentType":         "text/dns",
 		"collectionFinalName": "cfn"}),
 	).Return(map[string]interface{}{"foo": "bar"}, nil)
+
 	dbQuery2 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
 		"recordType":          "resource",
 		"payloadDigest":       "pd",
 		"warcId":              "WarcId:collectionId2",
 		"requestedUri":        "dns:example.org",
-		"ipAddress":           "127.0.0.1",
+		"ipAddress":           s.Addr,
 		"size":                int64(48),
 		"statusCode":          1,
 		"blockDigest":         "bd",
 		"discoveryPath":       "P",
-		"fetchTimeStamp":      r.EpochTime(r.MockAnything()),
+		"timeStamp":           r.MockAnything(),
+		"fetchTimeStamp":      r.MockAnything(),
 		"fetchTimeMs":         r.MockAnything(),
+		"storageRef":          "ref",
 		"contentType":         "text/dns",
 		"collectionFinalName": "cfn"}),
 	).Return(map[string]interface{}{"foo": "bar"}, nil)
 
-	ctx1 := context.TODO()
 	req1 := new(dns.Msg)
 	req1.SetQuestion("example.org.", dns.TypeA)
-	c1 := &resolve.COLLECTION{CollectionRef: &configV1.ConfigRef{Kind: configV1.Kind_collection, Id: "collectionId"}}
-	req1.Extra = append(req1.Extra, c1)
-	// Create a new Recorder that captures the result.
 	rec1 := dnstest.NewRecorder(&test.ResponseWriter{})
+	ctx1 := context.WithValue(ctx, resolve.CollectionIdKey{}, "collectionId1")
 
 	// Call our plugin directly, and check the result.
-	a.ServeDNS(ctx1, rec1, req1)
+	_, _ = a.ServeDNS(ctx1, rec1, req1)
 
 	msg1 := rec1.Msg
 	// expect answer message to have same id as the request
 	if msg1.Id != req1.Id {
 		t.Fatalf("Expected answer message to have same id as the request. Expected: %v, got: %v", req1.Id, msg1.Id)
 	}
-	// expect answer section with A record in it
+	// expect answer section with A archive in it
 	if len(msg1.Answer) == 0 {
 		t.Fatalf("Expected at least one RR in the answer section, got none: %s", msg1)
 	}
@@ -107,8 +137,8 @@ func TestExample(t *testing.T) {
 		t.Errorf("Expected 127.0.0.1, got: %s", msg1.Answer[0].(*dns.A).A.String())
 	}
 
-	// Validate ContentWriters Meta record
-	if cws.Meta.IpAddress != "127.0.0.1" {
+	// Validate ContentWriters Meta archive
+	if cws.Meta.IpAddress != s.Addr {
 		t.Errorf("Expected 127.0.0.1, got: %s", cws.Meta.IpAddress)
 	}
 	if cws.Meta.TargetUri != "dns:example.org" {
@@ -126,8 +156,10 @@ func TestExample(t *testing.T) {
 	if cws.Meta.RecordMeta[0].RecordNum != 0 {
 		t.Errorf("Expected 0, got: %d", cws.Meta.RecordMeta[0].Size)
 	}
-
-	// Validate ContentWriters Payload record
+	if cws.Meta.CollectionRef.GetId() != "collectionId1" {
+		t.Errorf("Expected collectionId1, got: %v", cws.Meta.GetCollectionRef().GetId())
+	}
+	// Validate ContentWriters Payload archive
 	ts := time.Now().UTC()
 
 	formattedTime := fmt.Sprintf("%d%02d%02d%02d%02d%02d",
@@ -142,12 +174,13 @@ func TestExample(t *testing.T) {
 	// Call our plugin directly, and check the result.
 	req2 := new(dns.Msg)
 	req2.SetQuestion("example.org.", dns.TypeA)
-	c2 := &resolve.COLLECTION{CollectionRef: &configV1.ConfigRef{Kind: configV1.Kind_collection, Id: "collectionId2"}}
-	req2.Extra = append(req2.Extra, c2)
+	// req2.Extra = append(req2.Extra, c2)
 	// Create a new Recorder that captures the result.
 	rec2 := dnstest.NewRecorder(&test.ResponseWriter{})
-	ctx2 := context.TODO()
-	a.ServeDNS(ctx2, rec2, req2)
+
+	ctx2 := context.WithValue(ctx, resolve.CollectionIdKey{}, "collectionId2")
+
+	_, _ = a.ServeDNS(ctx2, rec2, req2)
 
 	msg2 := rec2.Msg
 	// expect answer message to have same id as the request
@@ -163,12 +196,12 @@ func TestExample(t *testing.T) {
 	// Call our plugin directly, and check the result.
 	req3 := new(dns.Msg)
 	req3.SetQuestion("example.org.", dns.TypeA)
-	c3 := &resolve.COLLECTION{CollectionRef: &configV1.ConfigRef{Kind: configV1.Kind_collection, Id: "collectionId2"}}
-	req3.Extra = append(req3.Extra, c3)
+	// req3.Extra = append(req3.Extra, c3)
 	// Create a new Recorder that captures the result.
 	rec3 := dnstest.NewRecorder(&test.ResponseWriter{})
-	ctx3 := context.TODO()
-	a.ServeDNS(ctx3, rec3, req3)
+	ctx3 := context.WithValue(context.Background(), resolve.CollectionIdKey{}, &configV1.ConfigRef{Kind: configV1.Kind_collection, Id: "collectionId2"})
+
+	_, _ = a.ServeDNS(ctx3, rec3, req3)
 
 	msg3 := rec3.Msg
 	// expect answer message to have same id as the request
@@ -188,120 +221,140 @@ func TestExample(t *testing.T) {
 
 func TestConcurrent(t *testing.T) {
 	s := dnstest.NewServer(func(w dns.ResponseWriter, r *dns.Msg) {
-		ret := new(dns.Msg)
-		ret.SetReply(r)
+		msg := new(dns.Msg)
+		msg.SetReply(r)
 		switch r.Question[0].Name {
 		case "example.org.":
-			ret.Answer = append(ret.Answer, test.A("example.org. IN A 127.0.0.1"))
+			msg.Answer = append(msg.Answer, test.A("example.org. IN A 127.0.0.1"))
 		case "example2.org.":
-			ret.Answer = append(ret.Answer, test.A("example2.org. IN A 127.0.0.2"))
+			msg.Answer = append(msg.Answer, test.A("example2.org. IN A 127.0.0.2"))
 		}
-		w.WriteMsg(ret)
+		_ = w.WriteMsg(msg)
 	})
 	defer s.Close()
 
-	cws := NewCWServer(5001)
+	ctx := context.WithValue(context.Background(), dnsserver.Key{}, &dnsserver.Server{
+		Addr: s.Addr,
+	})
+
+	// Setup forward plugin with server as proxy
+	next := forward.New()
+	next.SetProxy(forward.NewProxy(s.Addr, transport.DNS))
+
+	// Setup contentWriter server mock
+	cws := NewContentWriterServerMock(5001)
 	defer cws.Close()
 
-	// Create a new Archiver Plugin. Use the test.ErrorHandler as the next plugin.
-	addr := []string{s.Addr}
-	conn := &Connection{
-		contentWriterAddr: "localhost:5001",
-		dbConnectOpts: r.ConnectOpts{
-			Database: "mock",
-		},
+	// Setup cache
+	ca, err := NewCache(10*time.Second, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
-	a, _ := NewArchivingCache(10*time.Second, 1024, "127.0.0.1", "53", conn)
-	a.Next = test.ErrorHandler()
-	a.forward = forward.NewLookup(addr)
-	a.Connection.connect()
 
+	// Setup database mock
+	dbOpts := r.ConnectOpts{
+		Address:  "mock",
+		Database: "mock",
+	}
+	dbMock := r.NewMock(dbOpts)
+	db := &database{
+		ConnectOpts: dbOpts,
+		Session:     dbMock,
+	}
+
+	// Setup contentWriter client
+	cwc := NewContentWriterClient("localhost", 5001)
+
+	// Setup plugin
+	a := NewArchivingCache(ca, db, cwc)
+	a.Next = next
+	err = a.OnStartup()
+	if err != nil {
+		t.Fatalf("WHAT THE FUCUK: %v", err)
+	}
 	defer a.Close()
 
-	// Set the expected db queries
-	m := a.Connection.dbSession.(*r.Mock)
-	q := m.On(r.MockAnything()).Return(map[string]interface{}{"foo": "bar"}, nil)
+	// Set the want db queries
+	q := dbMock.On(r.MockAnything()).Return(map[string]interface{}{"foo": "bar"}, nil)
 
-	ctx := context.TODO()
-	c := &resolve.COLLECTION{CollectionRef: &configV1.ConfigRef{Kind:configV1.Kind_collection, Id:"foo"}}
+	ctx = context.WithValue(ctx, resolve.CollectionIdKey{}, "foo")
+
 	req1 := new(dns.Msg)
 	req1.SetQuestion("example.org.", dns.TypeA)
-	req1.SetEdns0(4096, false)
-	req1.Extra = append(req1.Extra, c)
+
 	req2 := new(dns.Msg)
 	req2.SetQuestion("example2.org.", dns.TypeA)
-	req2.SetEdns0(4096, false)
-	req2.Extra = append(req2.Extra, c)
 
-	// Call our plugin directly several times in parallel, and check the result.
-	it := 20
-	ch := make(chan *dns.Msg)
-	res := make(map[string]int)
+	reqs := []*dns.Msg{req1, req2}
+
+	it := 10
+	expected := it * len(reqs)
+
+	ch := make(chan *dns.Msg, expected)
+	runParallelRequests(t, ctx, a, ch, reqs, it)
+	close(ch)
+
+	totalPerReq := make(map[string]int, len(reqs))
 	total := 0
-	runParallelRequests(ctx, a, t, req1, it/4, ch)
-	runParallelRequests(ctx, a, t, req2, it/4, ch)
-	// Wait for goroutines to finish
-	for i := 0; i < it/2; i++ {
-		resp := <-ch
-		if len(resp.Answer) != 1 {
-			t.Errorf("Expected one answer, got: %d", len(resp.Answer))
+
+	for msg := range ch {
+		if len(msg.Answer) != 1 {
+			t.Errorf("Expected one answer, got: %d", len(msg.Answer))
 		}
-		res[resp.Answer[0].String()]++
-		total++
-	}
-	runParallelRequests(ctx, a, t, req1, it/4, ch)
-	runParallelRequests(ctx, a, t, req2, it/4, ch)
-	// Wait for goroutines to finish
-	for i := 0; i < it/2; i++ {
-		resp := <-ch
-		if len(resp.Answer) != 1 {
-			t.Errorf("Expected one answer, got: %d", len(resp.Answer))
-		}
-		res[resp.Answer[0].String()]++
+		totalPerReq[msg.Answer[0].String()]++
 		total++
 	}
 
-	a.Connection.dbSession.(*r.Mock).AssertNumberOfExecutions(t, q, 2)
+	a.db.Session.(*r.Mock).AssertNumberOfExecutions(t, q, expected)
 
-	if total != it {
-		t.Errorf("Expected %d messages, got: %d", it, total)
+	if total != expected {
+		t.Errorf("Expected %d messages, got: %d", expected, total)
 	}
 
-	for _, count := range res {
-		if count != it/2 {
-			t.Errorf("Expected %d answers, got: %d", it/2, count)
+	for _, nr := range totalPerReq {
+		if nr != it {
+			t.Errorf("Expected %d answers, got: %d", it, nr)
 		}
 	}
 }
 
-func runParallelRequests(ctx context.Context, c plugin.Handler, t *testing.T, req *dns.Msg, it int, ch chan *dns.Msg) {
-	for i := 0; i < it; i++ {
+func runParallelRequests(t *testing.T, ctx context.Context, h plugin.Handler, ch chan *dns.Msg, reqs []*dns.Msg, it int) {
+	rec := NewChannelRecorder(ch)
+	for i := 0; i < it*len(reqs); i++ {
+		rec.Add(1)
+		nr := i
 		go func() {
-			_, err := c.ServeDNS(ctx, NewChannelRecorder(ch), req)
+			req := reqs[nr%len(reqs)]
+			_, err := h.ServeDNS(ctx, rec, req)
 			if err != nil {
-				t.Error(err)
+				t.Errorf("Failed to resolve %s: %v", req.Question[0].String(), err)
 			}
 		}()
 	}
+	rec.Wait()
 }
 
 // ChannelRecorder is a type of ResponseWriter that sends the message over a channel.
 type ChannelRecorder struct {
 	dns.ResponseWriter
-	Chan chan *dns.Msg
+	ch chan *dns.Msg
+	sync.WaitGroup
 }
 
 // NewChannelRecorder makes and returns a new ChannelRecorder.
 func NewChannelRecorder(ch chan *dns.Msg) *ChannelRecorder {
 	return &ChannelRecorder{
 		ResponseWriter: &test.ResponseWriter{},
-		Chan:           ch,
+		ch:             ch,
 	}
 }
 
 // WriteMsg records the status code and calls the
 // underlying ResponseWriter's WriteMsg method.
 func (r *ChannelRecorder) WriteMsg(res *dns.Msg) error {
-	go func() { r.Chan <- res }()
+	go func() {
+		defer r.Done()
+		r.ch <- res
+	}()
 	return r.ResponseWriter.WriteMsg(res)
 }

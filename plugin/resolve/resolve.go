@@ -3,19 +3,21 @@
 package resolve
 
 import (
-	"fmt"
-	"github.com/coredns/coredns/plugin"
-	clog "github.com/coredns/coredns/plugin/pkg/log"
-	configV1 "github.com/nlnwa/veidemann-api-go/config/v1"
-
 	"context"
 	"errors"
+	"fmt"
+	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin"
+	clog "github.com/coredns/coredns/plugin/pkg/log"
+	"github.com/coredns/coredns/plugin/pkg/rcode"
+	"github.com/coredns/coredns/plugin/pkg/reuseport"
+	"github.com/grpc-ecosystem/grpc-opentracing/go/otgrpc"
 	"github.com/miekg/dns"
-	dnsresolverV1 "github.com/nlnwa/veidemann-api-go/dnsresolver/v1"
+	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
+	"github.com/opentracing/opentracing-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"net"
-	"net/http"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use log.Info and
@@ -26,33 +28,36 @@ var (
 
 // Resolve is a plugin which converts requests from a DnsResolverServer (grpc) to an ordinary dns request.
 type Resolve struct {
-	Next       plugin.Handler
-	Port       int
-	ln         net.Listener
+	Next plugin.Handler
+	dnsresolverV1.UnimplementedDnsResolverServer
+
+	*grpc.Server
 	listenAddr net.Addr
-	lnSetup    bool
-	mux        *http.ServeMux
 	addr       string
-	server     dnsresolverV1.DnsResolverServer
 }
 
-// NewResolver returns a new instance of Resolve with the given address
-func NewResolver(port int) *Resolve {
-	met := &Resolve{
-		Port: port,
-		addr: fmt.Sprintf("0.0.0.0:%d", port),
-	}
+// CollectionIdKey is used as context value key for collectionId
+type CollectionIdKey struct{}
 
-	return met
+// NewResolver returns a new instance of Resolve with the given address
+func NewResolver(addr string) *Resolve {
+	server := &Resolve{
+		Server: grpc.NewServer(
+			grpc.UnaryInterceptor(otgrpc.OpenTracingServerInterceptor(opentracing.GlobalTracer())),
+		),
+		addr: addr,
+	}
+	// initialize server API
+	dnsresolverV1.RegisterDnsResolverServer(server, server)
+
+	return server
 }
 
 // Resolve implements DnsResolverServer
 func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveRequest) (*dnsresolverV1.ResolveReply, error) {
-	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
-	m.SetEdns0(4096, false)
-	c := &COLLECTION{CollectionRef: request.CollectionRef}
-	m.Extra = append(m.Extra, c)
+	msg := new(dns.Msg)
+	msg.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
+	msg.SetEdns0(4096, false)
 
 	p, ok := peer.FromContext(ctx)
 	if !ok {
@@ -64,37 +69,44 @@ func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveReq
 		return nil, fmt.Errorf("no TCP peer in gRPC context: %v", p.Addr)
 	}
 
-	w := &resolveResponse{localAddr: e.listenAddr, remoteAddr: a, Msg: m}
+	w := &gRPCresponse{localAddr: e.listenAddr, remoteAddr: a, Msg: msg}
 
-	rcode, err := e.Next.ServeDNS(ctx, w, m)
+	ctx = context.WithValue(ctx, CollectionIdKey{}, request.GetCollectionRef().GetId())
+	ctx = context.WithValue(ctx, dnsserver.Key{}, &dnsserver.Server{
+		Addr: e.addr,
+	})
+	ctx = context.WithValue(ctx, dnsserver.LoopKey{}, 0)
 
-	if rcode == dns.RcodeSuccess && err == nil && len(w.Msg.Answer) > 0 {
-		for _, answer := range w.Msg.Answer {
-			switch v := answer.(type) {
-			case *dns.A:
-				res := &dnsresolverV1.ResolveReply{}
-				res.Host = request.Host
-				res.Port = request.Port
-				res.TextualIp = v.A.String()
-				res.RawIp = v.A.To4()
-				log.Debugf("Resolved %v into %v", request, res)
-				return res, nil
-			case *dns.AAAA:
-				res := &dnsresolverV1.ResolveReply{}
-				res.Host = request.Host
-				res.Port = request.Port
-				res.TextualIp = v.AAAA.String()
-				res.RawIp = v.AAAA.To16()
-				log.Debugf("Resolved %v into %v", request, res)
-				return res, nil
-			default:
-				log.Debugf("Unhandled record: %v", v)
+	rc, err := e.Next.ServeDNS(ctx, w, msg)
+	if err != nil || rc != dns.RcodeSuccess {
+		log.Debugf("Unresolvable: %s: %s: %v", request.Host, rcode.ToString(rc), err)
+		return nil, &UnresolvableError{request.Host}
+	}
+	for _, answer := range w.Msg.Answer {
+		switch v := answer.(type) {
+		case *dns.A:
+			res := &dnsresolverV1.ResolveReply{
+				Host:      request.Host,
+				Port:      request.Port,
+				TextualIp: v.A.String(),
+				RawIp:     v.A.To4(),
 			}
+			log.Debugf("Resolved %v into %v", request, res)
+			return res, nil
+		case *dns.AAAA:
+			res := &dnsresolverV1.ResolveReply{
+				Host:      request.Host,
+				Port:      request.Port,
+				TextualIp: v.AAAA.String(),
+				RawIp:     v.AAAA.To16(),
+			}
+			log.Debugf("Resolved %v into %v", request, res)
+			return res, nil
+		default:
+			log.Debugf("Unhandled record: %v", v)
 		}
 	}
-
-	log.Debugf("Unresolvable: %v. Result: rcode: %v, err: %v, record: %v\n\n", request.Host, rcode, err, w.Msg)
-
+	log.Debugf("Unresolvable: %s: %s: empty answer or no A or AAAA resources in response record", request.Host, rcode.ToString(rc))
 	return nil, &UnresolvableError{request.Host}
 }
 
@@ -107,77 +119,47 @@ func (e *UnresolvableError) Error() string {
 	return fmt.Sprintf("Unresolvable host: %s", e.Host)
 }
 
-// OnStartup sets up the grpc endpoint.
 func (e *Resolve) OnStartup() error {
-	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", e.Port))
-	if err != nil {
-		log.Errorf("failed to start resolve handler: %v", err)
-	}
-
-	e.ln = ln
-	e.listenAddr = ln.Addr()
-	e.lnSetup = true
-
-	var opts []grpc.ServerOption
-	grpcServer := grpc.NewServer(opts...)
-	dnsresolverV1.RegisterDnsResolverServer(grpcServer, e)
-
+	// start server
 	go func() {
-		log.Debugf("Resolve listening on port: %d", e.Port)
-		grpcServer.Serve(ln)
+		ln, err := reuseport.Listen("tcp", e.addr)
+		if err != nil {
+			log.Errorf("failed to listen on %s: %v", e.addr, err)
+		} else {
+			log.Infof("Listening on grpc://%s", e.addr)
+			e.listenAddr = ln.Addr()
+			if err := e.Server.Serve(ln); err != nil {
+				log.Error(err)
+			}
+		}
 	}()
 	return nil
 }
 
-// OnRestart stops the listener on reload.
-func (e *Resolve) OnRestart() error {
-	if !e.lnSetup {
-		return nil
-	}
-
-	e.ln.Close()
-	e.lnSetup = false
+func (e *Resolve) OnStop() error {
+	e.Server.GracefulStop()
 	return nil
 }
 
-// OnFinalShutdown tears down the metrics listener on shutdown and restart.
-func (e *Resolve) OnFinalShutdown() error {
-	// We allow prometheus statements in multiple Server Blocks, but only the first
-	// will open the listener, for the rest they are all nil; guard against that.
-	if !e.lnSetup {
-		return nil
-	}
-
-	e.lnSetup = false
-	return e.ln.Close()
-}
-
-type COLLECTION struct {
-	dns.TXT
-	CollectionRef *configV1.ConfigRef
-}
-
-func (rr *COLLECTION) String() string { return rr.Hdr.String() + rr.CollectionRef.String() }
-
-type resolveResponse struct {
+type gRPCresponse struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	Msg        *dns.Msg
 }
 
 // Write is the hack that makes this work. It does not actually write the message
-// but returns the bytes we need to to write in r. We can then pick this up in Query
+// but returns the bytes we need to write in r. We can then pick this up in Query
 // and write a proper protobuf back to the client.
-func (r *resolveResponse) Write(b []byte) (int, error) {
+func (r *gRPCresponse) Write(b []byte) (int, error) {
 	r.Msg = new(dns.Msg)
 	return len(b), r.Msg.Unpack(b)
 }
 
 // These methods implement the dns.ResponseWriter interface from Go DNS.
-func (r *resolveResponse) Close() error              { return nil }
-func (r *resolveResponse) TsigStatus() error         { return nil }
-func (r *resolveResponse) TsigTimersOnly(b bool)     { return }
-func (r *resolveResponse) Hijack()                   { return }
-func (r *resolveResponse) LocalAddr() net.Addr       { return r.localAddr }
-func (r *resolveResponse) RemoteAddr() net.Addr      { return r.remoteAddr }
-func (r *resolveResponse) WriteMsg(m *dns.Msg) error { r.Msg = m; return nil }
+func (r *gRPCresponse) Close() error              { return nil }
+func (r *gRPCresponse) TsigStatus() error         { return nil }
+func (r *gRPCresponse) TsigTimersOnly(b bool)     {}
+func (r *gRPCresponse) Hijack()                   {}
+func (r *gRPCresponse) LocalAddr() net.Addr       { return r.localAddr }
+func (r *gRPCresponse) RemoteAddr() net.Addr      { return r.remoteAddr }
+func (r *gRPCresponse) WriteMsg(m *dns.Msg) error { r.Msg = m; return nil }
