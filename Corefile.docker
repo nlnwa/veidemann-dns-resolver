@@ -1,0 +1,29 @@
+.:53 {
+    ready :8181
+    resolve :8053
+    prometheus :9153
+    single
+    archivingcache {
+        eviction 1h
+        maxSizeMb 2048
+        contentWriterHost {$CONTENT_WRITER_HOST}
+        contentWriterPort {$CONTENT_WRITER_PORT}
+        dbHost {$DB_HOST}
+        dbPort {$DB_PORT}
+        dbUser {$DB_USER}
+        dbPassword {$DB_PASSWORD}
+        dbName {$DB_NAME}
+    }
+    forward . {$DNS_SERVER} {
+        # except IGNORED_NAMES...
+        # force_tcp
+        # prefer_udp
+        # expire DURATION
+        # max_fails INTEGER
+        # tls CERT KEY CA
+        # tls_servername NAME
+        # policy random|round_robin|sequential
+        # health_check DURATION [no_rec]
+        # max_concurrent MAX
+    }
+}
