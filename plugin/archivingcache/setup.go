@@ -2,50 +2,29 @@ package archivingcache
 
 import (
 	"fmt"
+	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/forward"
-	"github.com/coredns/coredns/plugin/metrics"
-	"github.com/mholt/caddy"
-	"github.com/nlnwa/veidemann-dns-resolver/iputil"
-	"gopkg.in/gorethink/gorethink.v4"
-	"net"
 	"strconv"
 	"time"
 )
 
-// init registers this plugin within the Caddy plugin framework. It uses "syncache" as the
+// init registers this plugin within the Caddy plugin framework. It uses "archivingcache" as the
 // name, and couples it to the Action "setup".
 func init() {
-	caddy.RegisterPlugin("archivingcache", caddy.Plugin{
-		ServerType: "dns",
-		Action:     setup,
-	})
+	plugin.Register("archivingcache", setup)
 }
 
-// setup is the function that gets called when the config parser see the token "syncache". Setup is responsible
-// for parsing any extra options the archive plugin may have. The first token this function sees is "syncache".
+// setup is the function that gets called when the config parser see the token "archivingcache". Setup is responsible
+// for parsing any extra options the archive plugin may have. The first token this function sees is "archivingcache".
 func setup(c *caddy.Controller) error {
 	a, err := parseArchivingCache(c)
 	if err != nil {
-		return plugin.Error("erratic", err)
+		return plugin.Error("archivingcache", err)
 	}
 
-	// Add a startup function that will -- after all plugins have been loaded -- check if the
-	// prometheus plugin has been used - if so we will export metrics. We can only register
-	// this metric once, hence the "once.Do".
-	c.OnStartup(func() error {
-		once.Do(func() {
-			metrics.MustRegister(c,
-				cacheSize, cacheHits, cacheMisses, requestCount)
-		})
-
-		return a.OnStartup()
-	})
-
-	c.OnShutdown(func() error {
-		return a.OnShutdown()
-	})
+	c.OnStartup(a.OnStartup)
+	c.OnShutdown(a.Close)
 
 	// Add the Plugin to CoreDNS, so Servers can use it in their plugin chain.
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
@@ -56,35 +35,31 @@ func setup(c *caddy.Controller) error {
 	return nil
 }
 
-// OnStartup starts a goroutines for all proxies.
-func (a *ArchivingCache) OnStartup() (err error) {
-	addr := []string{net.JoinHostPort(a.UpstreamIP, a.UpstreamPort)}
-	a.forward = forward.NewLookup(addr)
-	log.Infof("Archiver is using upstream DNS at: %s", addr)
-
-	return a.Connection.connect()
-}
-
-// OnShutdown stops all configured proxies.
-func (a *ArchivingCache) OnShutdown() error {
-	a.forward.Close()
-
-	if a.Connection.contentWriterClient != nil {
-		if err := a.Connection.contentWriterClientConn.Close(); err != nil {
-			log.Errorf("Could not disconnect from Content Writer: %v", err)
-		}
+// OnStartup connects to content writer and log writer.
+func (a *ArchivingCache) OnStartup() error {
+	if err := a.contentWriter.connect(); err != nil {
+		return plugin.Error("archivingcache", fmt.Errorf("failed to connect to contentWriter: %w", err))
 	}
+	log.Infof("Connected to contentWriter at: %s", a.contentWriter.conn.Addr())
 
-	if s, ok := a.Connection.dbSession.(*gorethink.Session); ok {
-		if err := s.Close(); err != nil {
-			log.Errorf("Could not disconnect from database: %v", err)
-		}
+	if err := a.db.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
+	log.Infof("Connected to database at: %s", a.db.ConnectOpts.Address)
+
 	return nil
 }
 
-// Close is a synonym for OnShutdown().
-func (a *ArchivingCache) Close() { a.OnShutdown() }
+// Close closes connections to content writer and log writer.
+func (a *ArchivingCache) Close() error {
+	if err := a.contentWriter.disconnect(); err != nil {
+		log.Errorf("Error disconnecting from content writer: %v", err)
+	}
+	if err := a.db.Close(); err != nil {
+		log.Errorf("Error disconnecting from database: %v", err)
+	}
+	return nil
+}
 
 func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	eviction := defaultEviction
@@ -96,11 +71,9 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	var dbUser string
 	var dbPassword string
 	var dbName string
-	var upstreamIP string
-	var upstreamPort string
 
 	j := 0
-	for c.Next() { // 'syncache'
+	for c.Next() { // 'archivingcache'
 		if j > 0 {
 			return nil, plugin.ErrOnce
 		}
@@ -182,21 +155,19 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 				} else {
 					dbName = arg
 				}
-			case "upstreamDNS":
-				if arg, err := getArg(c); err != nil {
-					return nil, err
-				} else {
-					if upstreamIP, upstreamPort, err = iputil.IPAndPortForAddr(arg, 53); err != nil {
-						return nil, plugin.Error("archiver", c.Errf("Unable to resolve upstream DNS server: %v", err))
-					}
-				}
 			default:
 				return nil, c.Errf("unknown property '%s'", c.Val())
 			}
 		}
 	}
-	connection := NewConnection(dbHost, dbPort, dbUser, dbPassword, dbName, contentWriterHost, contentWriterPort)
-	return NewArchivingCache(eviction, maxSizeMb, upstreamIP, upstreamPort, connection)
+
+	ca, err := NewCache(eviction, maxSizeMb)
+	if err != nil {
+		return nil, err
+	}
+	db := NewDbConnection(dbHost, dbPort, dbUser, dbPassword, dbName)
+	cw := NewContentWriterClient(contentWriterHost, contentWriterPort)
+	return NewArchivingCache(ca, db, cw), nil
 }
 
 func getArg(c *caddy.Controller) (string, error) {
@@ -213,6 +184,6 @@ func getArg(c *caddy.Controller) (string, error) {
 }
 
 const (
-	defaultEviction  = time.Duration(1 * time.Hour)
+	defaultEviction  = 1 * time.Hour
 	defaultMaxSizeMb = 1024 * 8
 )

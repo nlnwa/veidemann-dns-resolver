@@ -1,7 +1,7 @@
 package archivingcache
 
 import (
-	contentwriterV1 "github.com/nlnwa/veidemann-api-go/contentwriter/v1"
+	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	"net"
 
 	"context"
@@ -14,8 +14,9 @@ import (
 	"sync"
 )
 
-// Server is used to implement ContentWriterServer.
-type Server struct {
+// ContentWriterMock is used to implement ContentWriterServer.
+type ContentWriterMock struct {
+	contentwriterV1.UnimplementedContentWriterServer
 	server  *grpc.Server
 	Header  *contentwriterV1.Data
 	Payload *contentwriterV1.Data
@@ -25,14 +26,14 @@ type Server struct {
 }
 
 // Write implements ContentWriterServer
-func (s *Server) Write(stream contentwriterV1.ContentWriter_WriteServer) error {
+func (s *ContentWriterMock) Write(stream contentwriterV1.ContentWriter_WriteServer) error {
 	for {
 		foo, err := stream.Recv()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			log.Fatalf("Server error: %v", err)
+			log.Fatalf("ContentWriterMock error: %v", err)
 		}
 
 		switch x := foo.Value.(type) {
@@ -48,7 +49,7 @@ func (s *Server) Write(stream contentwriterV1.ContentWriter_WriteServer) error {
 			s.m.Lock()
 			s.Meta = x.Meta
 			warcId := "WarcId"
-			if (x.Meta.CollectionRef != nil) {
+			if x.Meta.CollectionRef != nil {
 				warcId += ":" + x.Meta.CollectionRef.Id
 			}
 			stream.SendAndClose(
@@ -79,33 +80,33 @@ func (s *Server) Write(stream contentwriterV1.ContentWriter_WriteServer) error {
 }
 
 // Flush implements ContentWriterServer
-func (s *Server) Flush(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
+func (s *ContentWriterMock) Flush(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
 	return &empty.Empty{}, nil
 }
 
 // Delete implements ContentWriterServer
-func (s *Server) Delete(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
+func (s *ContentWriterMock) Delete(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
 	return &empty.Empty{}, nil
 }
 
 // Close implements ContentWriterServer
-func (s *Server) Close() {
+func (s *ContentWriterMock) Close() {
 	s.server.Stop()
 }
 
-// NewCWServer creates a new ContentWriterServerMock
-func NewCWServer(port int) *Server {
+// NewContentWriterServerMock creates a new ContentWriterServerMock
+func NewContentWriterServerMock(port int) *ContentWriterMock {
 	lis, err := net.Listen("tcp", "localhost:"+strconv.Itoa(port))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	cwServer := &Server{}
+	cwServer := &ContentWriterMock{}
 	cwServer.server = grpc.NewServer()
 	contentwriterV1.RegisterContentWriterServer(cwServer.server, cwServer)
-	// Register reflection service on gRPC Server.
+	// Register reflection service on gRPC ContentWriterMock.
 	reflection.Register(cwServer.server)
 	go func() {
-		log.Debugf("Resolve listening on port: %d", port)
+		log.Infof("ContentWriterMock listening on port: %d", port)
 		cwServer.server.Serve(lis)
 	}()
 
