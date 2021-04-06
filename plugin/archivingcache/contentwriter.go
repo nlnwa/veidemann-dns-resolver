@@ -14,14 +14,14 @@ import (
 
 // ContentWriterClient holds the connections for ContentWriter and Veidemann database
 type ContentWriterClient struct {
-	conn   *connection.Connection
+	*connection.Connection
 	client contentwriterV1.ContentWriterClient
 }
 
 // NewContentWriterClient creates a new ContentWriterClient object
 func NewContentWriterClient(contentWriterHost string, contentWriterPort int) *ContentWriterClient {
 	c := &ContentWriterClient{
-		conn: connection.New("contentWriter",
+		Connection: connection.New("contentWriter",
 			connection.WithConnectTimeout(30*time.Second),
 			connection.WithHost(contentWriterHost),
 			connection.WithPort(contentWriterPort)),
@@ -32,7 +32,7 @@ func NewContentWriterClient(contentWriterHost string, contentWriterPort int) *Co
 
 // connect establishes connections
 func (c *ContentWriterClient) connect() error {
-	if conn, err := c.conn.Dial(); err != nil {
+	if conn, err := c.Dial(); err != nil {
 		return err
 	} else {
 		c.client = contentwriterV1.NewContentWriterClient(conn)
@@ -41,8 +41,8 @@ func (c *ContentWriterClient) connect() error {
 }
 
 func (c *ContentWriterClient) disconnect() error {
-	if c.conn.Conn != nil {
-		return c.conn.Conn.Close()
+	if c.ClientConn != nil {
+		return c.Close()
 	}
 	return nil
 }

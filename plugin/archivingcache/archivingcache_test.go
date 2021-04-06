@@ -4,9 +4,10 @@ import (
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/pkg/transport"
-
+	log2 "github.com/nlnwa/veidemann-api/go/log/v1"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
+	"github.com/nlnwa/veidemann-log-service/pkg/logclient"
 	"reflect"
 	"sync"
 	"testing"
@@ -15,7 +16,6 @@ import (
 	"github.com/coredns/coredns/plugin/test"
 	configV1 "github.com/nlnwa/veidemann-api/go/config/v1"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
-	r "gopkg.in/rethinkdb/rethinkdb-go.v6"
 
 	"bytes"
 	"context"
@@ -48,16 +48,8 @@ func TestExample(t *testing.T) {
 	cws := NewContentWriterServerMock(5001)
 	defer cws.Close()
 
-	// Setup database mock
-	dbOpts := r.ConnectOpts{
-		Address:  "mock",
-		Database: "mock",
-	}
-	dbMock := r.NewMock(dbOpts)
-	db := &database{
-		ConnectOpts: dbOpts,
-		Session:     dbMock,
-	}
+	logServiceMock := NewLogServiceMock(5002)
+	defer logServiceMock.Close()
 
 	// Setup cache
 	ca, err := NewCache(10*time.Second, 1024)
@@ -67,51 +59,16 @@ func TestExample(t *testing.T) {
 	// Setup contentWriter client
 	cwc := NewContentWriterClient("localhost", 5001)
 
+	logClient := logclient.New(logclient.WithPort(5002))
+
 	// Setup plugin with cache, database mock and content writer mock
-	a := NewArchivingCache(ca, db, cwc)
+	a := NewArchivingCache(ca, logClient, cwc)
 	a.Next = next
 	err = a.OnStartup()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = a.Close() }()
-
-	// Set the want db queries
-	dbQuery1 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
-		"recordType":          "resource",
-		"payloadDigest":       "pd",
-		"warcId":              "WarcId:collectionId1",
-		"requestedUri":        "dns:example.org",
-		"ipAddress":           s.Addr,
-		"size":                int64(48),
-		"statusCode":          1,
-		"blockDigest":         "bd",
-		"discoveryPath":       "P",
-		"timeStamp":           r.MockAnything(),
-		"fetchTimeStamp":      r.MockAnything(),
-		"fetchTimeMs":         r.MockAnything(),
-		"storageRef":          "ref",
-		"contentType":         "text/dns",
-		"collectionFinalName": "cfn"}),
-	).Return(map[string]interface{}{"foo": "bar"}, nil)
-
-	dbQuery2 := dbMock.On(r.Table("crawl_log").Insert(map[string]interface{}{
-		"recordType":          "resource",
-		"payloadDigest":       "pd",
-		"warcId":              "WarcId:collectionId2",
-		"requestedUri":        "dns:example.org",
-		"ipAddress":           s.Addr,
-		"size":                int64(48),
-		"statusCode":          1,
-		"blockDigest":         "bd",
-		"discoveryPath":       "P",
-		"timeStamp":           r.MockAnything(),
-		"fetchTimeStamp":      r.MockAnything(),
-		"fetchTimeMs":         r.MockAnything(),
-		"storageRef":          "ref",
-		"contentType":         "text/dns",
-		"collectionFinalName": "cfn"}),
-	).Return(map[string]interface{}{"foo": "bar"}, nil)
 
 	req1 := new(dns.Msg)
 	req1.SetQuestion("example.org.", dns.TypeA)
@@ -122,6 +79,7 @@ func TestExample(t *testing.T) {
 	_, _ = a.ServeDNS(ctx1, rec1, req1)
 
 	msg1 := rec1.Msg
+
 	// expect answer message to have same id as the request
 	if msg1.Id != req1.Id {
 		t.Fatalf("Expected answer message to have same id as the request. Expected: %v, got: %v", req1.Id, msg1.Id)
@@ -166,9 +124,31 @@ func TestExample(t *testing.T) {
 		ts.Year(), ts.Month(), ts.Day(),
 		ts.Hour(), ts.Minute(), ts.Second())
 
-	expected := []byte(formattedTime + "\nexample.org.\t3600\tIN\tA\t127.0.0.1\n")
-	if bytes.Compare(cws.Payload.Data, expected) != 0 {
-		t.Errorf("Expected '%s', got: '%s'", expected, cws.Payload.Data)
+	expectedPayload := []byte(formattedTime + "\nexample.org.\t3600\tIN\tA\t127.0.0.1\n")
+	if bytes.Compare(cws.Payload.Data, expectedPayload) != 0 {
+		t.Errorf("Expected '%s', got: '%s'", expectedPayload, cws.Payload.Data)
+	}
+
+	expectedCrawlLog := &log2.CrawlLog{
+		RecordType:          "resource",
+		PayloadDigest:       "pd",
+		WarcId:              "WarcId:collectionId1",
+		RequestedUri:        "dns:example.org",
+		IpAddress:           s.Addr,
+		Size:                int64(48),
+		StatusCode:          1,
+		BlockDigest:         "bd",
+		DiscoveryPath:       "P",
+		StorageRef:          "ref",
+		ContentType:         "text/dns",
+		CollectionFinalName: "cfn",
+	}
+	gotCrawlLog := logServiceMock.CrawlLogs[0]
+	expectedCrawlLog.TimeStamp = gotCrawlLog.TimeStamp
+	expectedCrawlLog.FetchTimeMs = gotCrawlLog.FetchTimeMs
+	expectedCrawlLog.FetchTimeStamp = gotCrawlLog.FetchTimeStamp
+	if !reflect.DeepEqual(expectedCrawlLog, gotCrawlLog) {
+		t.Fatalf("Expected %v, got %v", expectedCrawlLog, gotCrawlLog)
 	}
 
 	// Call our plugin directly, and check the result.
@@ -193,6 +173,28 @@ func TestExample(t *testing.T) {
 		t.Errorf("Expected second request to get cached message. Expected:\n%v, Got:\n%v", msg1, msg2)
 	}
 
+	expectedCrawlLog = &log2.CrawlLog{
+		RecordType:          "resource",
+		PayloadDigest:       "pd",
+		WarcId:              "WarcId:collectionId2",
+		RequestedUri:        "dns:example.org",
+		IpAddress:           s.Addr,
+		Size:                int64(48),
+		StatusCode:          1,
+		BlockDigest:         "bd",
+		DiscoveryPath:       "P",
+		StorageRef:          "ref",
+		ContentType:         "text/dns",
+		CollectionFinalName: "cfn",
+	}
+	gotCrawlLog = logServiceMock.CrawlLogs[1]
+	expectedCrawlLog.TimeStamp = gotCrawlLog.TimeStamp
+	expectedCrawlLog.FetchTimeMs = gotCrawlLog.FetchTimeMs
+	expectedCrawlLog.FetchTimeStamp = gotCrawlLog.FetchTimeStamp
+	if !reflect.DeepEqual(expectedCrawlLog, gotCrawlLog) {
+		t.Errorf("Expected %v, got %v", expectedCrawlLog, gotCrawlLog)
+	}
+
 	// Call our plugin directly, and check the result.
 	req3 := new(dns.Msg)
 	req3.SetQuestion("example.org.", dns.TypeA)
@@ -214,9 +216,9 @@ func TestExample(t *testing.T) {
 		t.Errorf("Expected third request to get cached message. Expected:\n%v, Got:\n%v", msg1, msg3)
 	}
 
-	dbMock.AssertExpectations(t)
-	dbMock.AssertNumberOfExecutions(t, dbQuery1, 1)
-	dbMock.AssertNumberOfExecutions(t, dbQuery2, 1)
+	if len(logServiceMock.CrawlLogs) != 2 {
+		t.Errorf("Expected 2 crawl logs, got %d", len(logServiceMock.CrawlLogs))
+	}
 }
 
 func TestConcurrent(t *testing.T) {
@@ -251,31 +253,23 @@ func TestConcurrent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Setup database mock
-	dbOpts := r.ConnectOpts{
-		Address:  "mock",
-		Database: "mock",
-	}
-	dbMock := r.NewMock(dbOpts)
-	db := &database{
-		ConnectOpts: dbOpts,
-		Session:     dbMock,
-	}
-
 	// Setup contentWriter client
 	cwc := NewContentWriterClient("localhost", 5001)
 
+	// Setup log service mock
+	logServiceMock := NewLogServiceMock(5002)
+	defer logServiceMock.Close()
+
+	logClient := logclient.New(logclient.WithPort(5002))
+
 	// Setup plugin
-	a := NewArchivingCache(ca, db, cwc)
+	a := NewArchivingCache(ca, logClient, cwc)
 	a.Next = next
 	err = a.OnStartup()
 	if err != nil {
-		t.Fatalf("WHAT THE FUCUK: %v", err)
+		t.Fatal(err)
 	}
-	defer a.Close()
-
-	// Set the want db queries
-	q := dbMock.On(r.MockAnything()).Return(map[string]interface{}{"foo": "bar"}, nil)
+	defer func() { _ = a.Close() }()
 
 	ctx = context.WithValue(ctx, resolve.CollectionIdKey{}, "foo")
 
@@ -305,7 +299,9 @@ func TestConcurrent(t *testing.T) {
 		total++
 	}
 
-	a.db.Session.(*r.Mock).AssertNumberOfExecutions(t, q, expected)
+	if len(logServiceMock.CrawlLogs) > expected {
+		t.Errorf("Expected less than %d written crawl logs, got %d", expected, len(logServiceMock.CrawlLogs))
+	}
 
 	if total != expected {
 		t.Errorf("Expected %d messages, got: %d", expected, total)
@@ -325,9 +321,9 @@ func runParallelRequests(t *testing.T, ctx context.Context, h plugin.Handler, ch
 		nr := i
 		go func() {
 			req := reqs[nr%len(reqs)]
-			_, err := h.ServeDNS(ctx, rec, req)
-			if err != nil {
-				t.Errorf("Failed to resolve %s: %v", req.Question[0].String(), err)
+			rc, err := h.ServeDNS(ctx, rec, req)
+			if rc != dns.RcodeSuccess || err != nil {
+				t.Errorf("Failed to resolve %s: %v", req.Question[0].Name, err)
 			}
 		}()
 	}
@@ -352,9 +348,7 @@ func NewChannelRecorder(ch chan *dns.Msg) *ChannelRecorder {
 // WriteMsg records the status code and calls the
 // underlying ResponseWriter's WriteMsg method.
 func (r *ChannelRecorder) WriteMsg(res *dns.Msg) error {
-	go func() {
-		defer r.Done()
-		r.ch <- res
-	}()
+	defer r.Done()
+	r.ch <- res
 	return r.ResponseWriter.WriteMsg(res)
 }
