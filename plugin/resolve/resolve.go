@@ -38,6 +38,7 @@ type Resolve struct {
 
 // CollectionIdKey is used as context value key for collectionId
 type CollectionIdKey struct{}
+type ExecutionIdKey struct{}
 
 // NewResolver returns a new instance of Resolve with the given address
 func NewResolver(addr string) *Resolve {
@@ -72,6 +73,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveReq
 	w := &gRPCresponse{localAddr: e.listenAddr, remoteAddr: a, Msg: msg}
 
 	ctx = context.WithValue(ctx, CollectionIdKey{}, request.GetCollectionRef().GetId())
+	ctx = context.WithValue(ctx, ExecutionIdKey{}, request.GetExecutionId())
 	ctx = context.WithValue(ctx, dnsserver.Key{}, &dnsserver.Server{
 		Addr: e.addr,
 	})

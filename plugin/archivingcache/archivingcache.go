@@ -65,6 +65,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 	server := metrics.WithServer(ctx)
 	fetchStart := time.Now().UTC()
 	collectionId, hasCollectionId := ctx.Value(resolve.CollectionIdKey{}).(string)
+	executionId, _ := ctx.Value(resolve.ExecutionIdKey{}).(string)
 	key := state.Name() + state.Class() + state.Type()
 	var msg *dns.Msg
 
@@ -97,7 +98,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 						log.Warningf("Failed to cache: %v: %v", key, err)
 					}
 					// archive the response
-					a.archive(state, msg, collectionId, proxyAddr, fetchStart)
+					a.archive(state, msg, executionId, collectionId, proxyAddr, fetchStart)
 					break out
 				}
 			}
@@ -113,7 +114,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 				if err != nil {
 					log.Warningf("Failed to update existing cache entry: %v, %v", state.Name(), err)
 				}
-				a.archive(state, msg, collectionId, entry.ProxyAddr, fetchStart)
+				a.archive(state, msg, executionId, collectionId, entry.ProxyAddr, fetchStart)
 			}
 		}
 	}
@@ -172,18 +173,18 @@ func (a *ArchivingCache) get(key string, server string) *CacheEntry {
 }
 
 // archive writes a WARC record and a crawl log.
-func (a *ArchivingCache) archive(state *request.Request, msg *dns.Msg, collectionId, proxyAddr string, fetchStart time.Time) {
+func (a *ArchivingCache) archive(state *request.Request, msg *dns.Msg, executionId string, collectionId string, proxyAddr string, fetchStart time.Time) {
 	fetchDurationMs := (time.Now().Sub(fetchStart).Nanoseconds() + 500000) / 1000000
 	requestedHost := strings.Trim(state.Name(), ".")
 	payload := []byte(fmt.Sprintf("%d%02d%02d%02d%02d%02d\n%s\n",
 		fetchStart.Year(), fetchStart.Month(), fetchStart.Day(),
 		fetchStart.Hour(), fetchStart.Minute(), fetchStart.Second(), msg.Answer[0]))
 
-	payload, reply, err := a.contentWriter.writeRecord(payload, fetchStart, requestedHost, proxyAddr, collectionId)
+	payload, reply, err := a.contentWriter.writeRecord(payload, fetchStart, requestedHost, proxyAddr, executionId, collectionId)
 	if err != nil {
 		log.Errorf("Failed to write WARC record: %v", err)
 	} else {
-		err := a.WriteCrawlLog(payload, reply.GetMeta().GetRecordMeta()[0], requestedHost, fetchStart, fetchDurationMs, proxyAddr)
+		err := a.WriteCrawlLog(payload, reply.GetMeta().GetRecordMeta()[0], requestedHost, fetchStart, fetchDurationMs, proxyAddr, executionId)
 		if err != nil {
 			log.Error("Failed to write crawl log: %w", err)
 		}
@@ -194,11 +195,12 @@ func (a *ArchivingCache) archive(state *request.Request, msg *dns.Msg, collectio
 func (a *ArchivingCache) Name() string { return "archivingcache" }
 
 // WriteCrawlLog stores a crawl log of a dns request/response.
-func (a *ArchivingCache) WriteCrawlLog(payload []byte, record *contentwriterV1.WriteResponseMeta_RecordMeta, requestedHost string, fetchStart time.Time, fetchDurationMs int64, proxyAddr string) error {
+func (a *ArchivingCache) WriteCrawlLog(payload []byte, record *contentwriterV1.WriteResponseMeta_RecordMeta, requestedHost string, fetchStart time.Time, fetchDurationMs int64, proxyAddr string, executionId string) error {
 	fetchTimeStamp, _ := ptypes.TimestampProto(fetchStart)
 	timestamp, _ := ptypes.TimestampProto(time.Now().UTC())
 
 	crawlLog := &logV1.CrawlLog{
+		ExecutionId:         executionId,
 		RecordType:          "resource",
 		RequestedUri:        "dns:" + requestedHost,
 		DiscoveryPath:       "P",
