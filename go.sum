@@ -395,8 +395,8 @@ github.com/nats-io/nkeys v0.1.3/go.mod h1:xpnFELMwJABBLVhffcfd1MZx6VsNRFpEugbxzi
 github.com/nats-io/nuid v1.0.1/go.mod h1:19wcPz3Ph3q0Jbyiqsd0kePYG7A95tJPxeL+1OSON2c=
 github.com/nlnwa/veidemann-api/go v0.0.0-20210406160358-ce1afa160662 h1:lWc6mit5qngGRYbebx66KX6qBzUsEIXXX59VYK30/CU=
 github.com/nlnwa/veidemann-api/go v0.0.0-20210406160358-ce1afa160662/go.mod h1:UVGCJSmHATdV3Eohyq03lF3z86q9nRXRQNv3krrEC8I=
-github.com/nlnwa/veidemann-api/go v0.0.0-20210407135619-e9b86b190e62 h1:CenrgAK6hOJPIZmDLf2frf+e8Z7hlFRmrjqK1Cdo0ag=
-github.com/nlnwa/veidemann-api/go v0.0.0-20210407135619-e9b86b190e62/go.mod h1:UVGCJSmHATdV3Eohyq03lF3z86q9nRXRQNv3krrEC8I=
+github.com/nlnwa/veidemann-api/go v0.0.0-20210413093311-7ff38e848604 h1:sWzOP0T3UbDPCZLmxwSalXGLfnZHpmYA7UFElCOmgyM=
+github.com/nlnwa/veidemann-api/go v0.0.0-20210413093311-7ff38e848604/go.mod h1:UVGCJSmHATdV3Eohyq03lF3z86q9nRXRQNv3krrEC8I=
 github.com/nlnwa/veidemann-log-service v0.0.0-20210406173123-d387d67069d6 h1:YVc4c1nho16HeVlod5+1K8So1Gjm/F5cvqcTAiGKFG8=
 github.com/nlnwa/veidemann-log-service v0.0.0-20210406173123-d387d67069d6/go.mod h1:4khDw/8YdGx6lc0h80MQE7LupoG4XOuTfHi9pS/EM+A=
 github.com/oklog/oklog v0.3.2/go.mod h1:FCV+B7mhrz4o+ueLpx+KqkyXRGMWOYEvfiXtdGtbWGs=
