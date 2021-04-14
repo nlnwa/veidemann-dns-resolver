@@ -11,7 +11,7 @@ require (
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/miekg/dns v1.1.38
 	github.com/nlnwa/veidemann-api/go v0.0.0-20210413093311-7ff38e848604
-	github.com/nlnwa/veidemann-log-service v0.0.0-20210406173123-d387d67069d6
+	github.com/nlnwa/veidemann-log-service v0.1.0
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.9.0
 	golang.org/x/net v0.0.0-20210220033124-5f55cee0dc0d // indirect
