@@ -28,12 +28,13 @@ import (
 // Connection configure a connection to a gRPC server. Connection are set by the Option
 // values passed to New.
 type Connection struct {
+	*grpc.ClientConn
+
 	Name           string
 	Host           string
 	Port           int
 	ConnectTimeout time.Duration
 	DialOptions    []grpc.DialOption
-	Conn           *grpc.ClientConn
 }
 
 // Option configures how to dial to a service.
@@ -81,8 +82,8 @@ func (opts *Connection) Addr() string {
 }
 
 func (opts *Connection) Dial() (*grpc.ClientConn, error) {
-	if opts.Conn != nil {
-		return opts.Conn, nil
+	if opts.ClientConn != nil {
+		return opts.ClientConn, nil
 	}
 	dialCtx, dialCancel := context.WithTimeout(context.Background(), opts.ConnectTimeout)
 	defer dialCancel()
@@ -94,7 +95,7 @@ func (opts *Connection) Dial() (*grpc.ClientConn, error) {
 		}
 		return nil, err
 	}
-	opts.Conn = conn
+	opts.ClientConn = conn
 
 	return conn, nil
 }

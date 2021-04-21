@@ -5,6 +5,7 @@ import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
+	"github.com/nlnwa/veidemann-log-service/pkg/logclient"
 	"strconv"
 	"time"
 )
@@ -40,12 +41,12 @@ func (a *ArchivingCache) OnStartup() error {
 	if err := a.contentWriter.connect(); err != nil {
 		return plugin.Error("archivingcache", fmt.Errorf("failed to connect to contentWriter: %w", err))
 	}
-	log.Infof("Connected to contentWriter at: %s", a.contentWriter.conn.Addr())
+	log.Infof("Connected to contentWriter at: %s", a.contentWriter.Addr())
 
-	if err := a.db.Connect(); err != nil {
+	if err := a.logClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	log.Infof("Connected to database at: %s", a.db.ConnectOpts.Address)
+	log.Infof("Connected to log client at: %s", a.logClient.Addr())
 
 	return nil
 }
@@ -55,8 +56,8 @@ func (a *ArchivingCache) Close() error {
 	if err := a.contentWriter.disconnect(); err != nil {
 		log.Errorf("Error disconnecting from content writer: %v", err)
 	}
-	if err := a.db.Close(); err != nil {
-		log.Errorf("Error disconnecting from database: %v", err)
+	if err := a.logClient.Close(); err != nil {
+		log.Errorf("Error disconnecting from log client: %v", err)
 	}
 	return nil
 }
@@ -66,11 +67,8 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	maxSizeMb := defaultMaxSizeMb
 	var contentWriterHost string
 	var contentWriterPort int
-	var dbHost string
-	var dbPort int
-	var dbUser string
-	var dbPassword string
-	var dbName string
+	var logHost string
+	var logPort int
 
 	j := 0
 	for c.Next() { // 'archivingcache'
@@ -122,38 +120,20 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 						return nil, err
 					}
 				}
-			case "dbHost":
+			case "logHost":
 				if arg, err := getArg(c); err != nil {
 					return nil, err
 				} else {
-					dbHost = arg
+					logHost = arg
 				}
-			case "dbPort":
+			case "logPort":
 				if arg, err := getArg(c); err != nil {
 					return nil, err
 				} else {
-					dbPort, err = strconv.Atoi(arg)
+					logPort, err = strconv.Atoi(arg)
 					if err != nil {
 						return nil, err
 					}
-				}
-			case "dbUser":
-				if arg, err := getArg(c); err != nil {
-					return nil, err
-				} else {
-					dbUser = arg
-				}
-			case "dbPassword":
-				if arg, err := getArg(c); err != nil {
-					return nil, err
-				} else {
-					dbPassword = arg
-				}
-			case "dbName":
-				if arg, err := getArg(c); err != nil {
-					return nil, err
-				} else {
-					dbName = arg
 				}
 			default:
 				return nil, c.Errf("unknown property '%s'", c.Val())
@@ -165,9 +145,12 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	db := NewDbConnection(dbHost, dbPort, dbUser, dbPassword, dbName)
+	logClient := logclient.New(
+		logclient.WithHost(logHost),
+		logclient.WithPort(logPort),
+	)
 	cw := NewContentWriterClient(contentWriterHost, contentWriterPort)
-	return NewArchivingCache(ca, db, cw), nil
+	return NewArchivingCache(ca, logClient, cw), nil
 }
 
 func getArg(c *caddy.Controller) (string, error) {

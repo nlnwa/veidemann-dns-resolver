@@ -36,7 +36,6 @@ var directives = []string{
 	"forward",
 }
 
-
 func init() {
 	dnsserver.Directives = directives
 }

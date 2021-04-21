@@ -8,11 +8,8 @@
         maxSizeMb 2048
         contentWriterHost {$CONTENT_WRITER_HOST}
         contentWriterPort {$CONTENT_WRITER_PORT}
-        dbHost {$DB_HOST}
-        dbPort {$DB_PORT}
-        dbUser {$DB_USER}
-        dbPassword {$DB_PASSWORD}
-        dbName {$DB_NAME}
+        logHost {$LOG_WRITER_HOST}
+        logPort {$LOG_WRITER_PORT}
     }
     forward . {$DNS_SERVER} {
         # except IGNORED_NAMES...
