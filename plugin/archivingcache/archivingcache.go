@@ -12,7 +12,6 @@ import (
 	"github.com/coredns/coredns/plugin/pkg/nonwriter"
 	"github.com/coredns/coredns/plugin/pkg/response"
 	"github.com/coredns/coredns/request"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/miekg/dns"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
@@ -20,6 +19,7 @@ import (
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"github.com/nlnwa/veidemann-log-service/pkg/logclient"
 	"google.golang.org/grpc/connectivity"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"strings"
 	"time"
 )
@@ -196,17 +196,14 @@ func (a *ArchivingCache) Name() string { return "archivingcache" }
 
 // WriteCrawlLog stores a crawl log of a dns request/response.
 func (a *ArchivingCache) WriteCrawlLog(payload []byte, record *contentwriterV1.WriteResponseMeta_RecordMeta, requestedHost string, fetchStart time.Time, fetchDurationMs int64, proxyAddr string, executionId string) error {
-	fetchTimeStamp, _ := ptypes.TimestampProto(fetchStart)
-	timestamp, _ := ptypes.TimestampProto(time.Now().UTC())
-
 	crawlLog := &logV1.CrawlLog{
 		ExecutionId:         executionId,
 		RecordType:          "resource",
 		RequestedUri:        "dns:" + requestedHost,
 		DiscoveryPath:       "P",
 		StatusCode:          1,
-		TimeStamp:           timestamp,
-		FetchTimeStamp:      fetchTimeStamp,
+		TimeStamp:           timestamppb.New(time.Now().UTC()),
+		FetchTimeStamp:      timestamppb.New(fetchStart),
 		FetchTimeMs:         fetchDurationMs,
 		IpAddress:           proxyAddr,
 		ContentType:         "text/dns",
@@ -217,5 +214,7 @@ func (a *ArchivingCache) WriteCrawlLog(payload []byte, record *contentwriterV1.W
 		CollectionFinalName: record.GetCollectionFinalName(),
 		StorageRef:          record.GetStorageRef(),
 	}
-	return a.logClient.WriteCrawlLogs(context.TODO(), []*logV1.CrawlLog{crawlLog})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return a.logClient.WriteCrawlLogs(ctx, []*logV1.CrawlLog{crawlLog})
 }
