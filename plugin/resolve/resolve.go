@@ -56,9 +56,9 @@ func NewResolver(addr string) *Resolve {
 
 // Resolve implements DnsResolverServer
 func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveRequest) (*dnsresolverV1.ResolveReply, error) {
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
-	msg.SetEdns0(4096, false)
+	req := new(dns.Msg)
+	req.SetQuestion(dns.Fqdn(request.GetHost()), dns.TypeA)
+	req.SetEdns0(4096, false)
 
 	p, ok := peer.FromContext(ctx)
 	if !ok {
@@ -70,7 +70,7 @@ func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveReq
 		return nil, fmt.Errorf("no TCP peer in gRPC context: %v", p.Addr)
 	}
 
-	w := &gRPCresponse{localAddr: e.listenAddr, remoteAddr: a, Msg: msg}
+	w := &gRPCresponse{localAddr: e.listenAddr, remoteAddr: a, Msg: req}
 
 	ctx = context.WithValue(ctx, CollectionIdKey{}, request.GetCollectionRef().GetId())
 	ctx = context.WithValue(ctx, ExecutionIdKey{}, request.GetExecutionId())
@@ -79,46 +79,70 @@ func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveReq
 	})
 	ctx = context.WithValue(ctx, dnsserver.LoopKey{}, 0)
 
-	rc, err := e.Next.ServeDNS(ctx, w, msg)
-	if err != nil || rc != dns.RcodeSuccess {
-		log.Debugf("Unresolvable: %s: %s: %v", request.Host, rcode.ToString(rc), err)
-		return nil, &UnresolvableError{request.Host}
+	if rc, err := plugin.NextOrFailure(e.Name(), e.Next, ctx, w, req); err != nil {
+		err = &UnresolvableError{
+			Host:  request.Host,
+			Rcode: rc,
+			Err:   err,
+		}
+		log.Error(err)
+		return nil, err
 	}
-	for _, answer := range w.Msg.Answer {
+	msg := w.Msg
+
+	if msg.Rcode != dns.RcodeSuccess {
+		// TODO return error in resolveReply.Error
+		// TODO frontier must be refactored to do this
+		err := &UnresolvableError{
+			Host:  request.Host,
+			Rcode: msg.Rcode,
+		}
+		log.Debug(err)
+		return nil, err
+	}
+
+	res := &dnsresolverV1.ResolveReply{
+		Host: request.Host,
+		Port: request.Port,
+	}
+out:
+	for _, answer := range msg.Answer {
 		switch v := answer.(type) {
 		case *dns.A:
-			res := &dnsresolverV1.ResolveReply{
-				Host:      request.Host,
-				Port:      request.Port,
-				TextualIp: v.A.String(),
-				RawIp:     v.A.To4(),
-			}
-			log.Debugf("Resolved %v into %v", request, res)
-			return res, nil
+			res.TextualIp = v.A.String()
+			res.RawIp = v.A.To4()
+			// prefer A records
+			break out
 		case *dns.AAAA:
-			res := &dnsresolverV1.ResolveReply{
-				Host:      request.Host,
-				Port:      request.Port,
-				TextualIp: v.AAAA.String(),
-				RawIp:     v.AAAA.To16(),
-			}
-			log.Debugf("Resolved %v into %v", request, res)
-			return res, nil
-		default:
-			log.Debugf("Unhandled record: %v", v)
+			res.TextualIp = v.AAAA.String()
+			res.RawIp = v.AAAA.To16()
 		}
 	}
-	log.Debugf("Unresolvable: %s: %s: empty answer or no A or AAAA resources in response record", request.Host, rcode.ToString(rc))
-	return nil, &UnresolvableError{request.Host}
+	if res.TextualIp != "" {
+		log.Debugf("Resolved %v into %v", request.Host, res)
+		return res, nil
+	}
+
+	err := &UnresolvableError{
+		Host:  request.Host,
+		Rcode: msg.Rcode,
+	}
+	log.Debug(err)
+	return nil, err
 }
+
+// Name implements the Handler interface.
+func (s *Resolve) Name() string { return "resolve" }
 
 // UnresolvableError is sent as error for unresolvable DNS lookup
 type UnresolvableError struct {
-	Host string
+	Host  string
+	Rcode int
+	Err   error
 }
 
 func (e *UnresolvableError) Error() string {
-	return fmt.Sprintf("Unresolvable host: %s", e.Host)
+	return fmt.Sprintf("Unresolvable host: %s: %s: %v", e.Host, rcode.ToString(e.Rcode), e.Err)
 }
 
 func (e *Resolve) OnStartup() error {

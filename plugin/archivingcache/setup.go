@@ -5,7 +5,7 @@ import (
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
-	"github.com/nlnwa/veidemann-log-service/pkg/logclient"
+	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"strconv"
 	"time"
 )
@@ -25,7 +25,7 @@ func setup(c *caddy.Controller) error {
 	}
 
 	c.OnStartup(a.OnStartup)
-	c.OnShutdown(a.Close)
+	c.OnShutdown(a.OnShutdown)
 
 	// Add the Plugin to CoreDNS, so Servers can use it in their plugin chain.
 	dnsserver.GetConfig(c).AddPlugin(func(next plugin.Handler) plugin.Handler {
@@ -38,28 +38,24 @@ func setup(c *caddy.Controller) error {
 
 // OnStartup connects to content writer and log writer.
 func (a *ArchivingCache) OnStartup() error {
-	if err := a.contentWriter.connect(); err != nil {
-		return plugin.Error("archivingcache", fmt.Errorf("failed to connect to contentWriter: %w", err))
+	if err := a.contentWriter.Connect(); err != nil {
+		return fmt.Errorf("failed to connect to cws: %w", err)
 	}
-	log.Infof("Connected to contentWriter at: %s", a.contentWriter.Addr())
+	log.Infof("Connected to cws at: %s", a.contentWriter.Addr())
 
-	if err := a.logClient.Connect(); err != nil {
+	if err := a.logWriter.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	log.Infof("Connected to log client at: %s", a.logClient.Addr())
+	log.Infof("Connected to log client at: %s", a.logWriter.Addr())
 
 	return nil
 }
 
-// Close closes connections to content writer and log writer.
-func (a *ArchivingCache) Close() error {
-	if err := a.contentWriter.disconnect(); err != nil {
-		log.Errorf("Error disconnecting from content writer: %v", err)
-	}
-	if err := a.logClient.Close(); err != nil {
-		log.Errorf("Error disconnecting from log client: %v", err)
-	}
-	return nil
+// OnShutdown closes connections to content writer and log writer.
+func (a *ArchivingCache) OnShutdown() (err error) {
+	err = a.contentWriter.Close()
+	err = a.logWriter.Close()
+	return
 }
 
 func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
@@ -145,12 +141,17 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	logClient := logclient.New(
-		logclient.WithHost(logHost),
-		logclient.WithPort(logPort),
+	lw := NewLogWriterClient(
+		serviceconnections.WithConnectTimeout(30*time.Second),
+		serviceconnections.WithHost(logHost),
+		serviceconnections.WithPort(logPort),
 	)
-	cw := NewContentWriterClient(contentWriterHost, contentWriterPort)
-	return NewArchivingCache(ca, logClient, cw), nil
+	cw := NewContentWriterClient(
+		serviceconnections.WithConnectTimeout(30*time.Second),
+		serviceconnections.WithHost(contentWriterHost),
+		serviceconnections.WithPort(contentWriterPort),
+	)
+	return NewArchivingCache(ca, lw, cw), nil
 }
 
 func getArg(c *caddy.Controller) (string, error) {

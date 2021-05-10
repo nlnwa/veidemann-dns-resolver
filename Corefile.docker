@@ -1,8 +1,9 @@
 .:53 {
+    loop
     ready :8181
     resolve :8053
     prometheus :9153
-    single
+    reload 60s
     archivingcache {
         eviction 1h
         maxSizeMb 2048

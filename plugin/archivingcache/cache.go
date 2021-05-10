@@ -78,6 +78,9 @@ func (c *Cache) Get(key string) (*CacheEntry, error) {
 	return entry, nil
 }
 
+func (c *Cache) Reset() error {
+	return c.cache.Reset()
+}
 type CacheEntry struct {
 	ProxyAddr     string
 	CollectionIds []string

@@ -3,6 +3,7 @@
     prometheus :9153
     debug
     errors
+    loop
     log
     forward . 8.8.8.8 1.1.1.1 9.9.9.9 {
         # except IGNORED_NAMES...

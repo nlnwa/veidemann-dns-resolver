@@ -4,7 +4,6 @@ package archivingcache
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metrics"
@@ -13,13 +12,9 @@ import (
 	"github.com/coredns/coredns/plugin/pkg/response"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
-	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
-	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
-	"github.com/nlnwa/veidemann-log-service/pkg/logclient"
-	"google.golang.org/grpc/connectivity"
-	"google.golang.org/protobuf/types/known/timestamppb"
+	"golang.org/x/sync/singleflight"
 	"strings"
 	"time"
 )
@@ -32,31 +27,55 @@ var (
 
 // ArchivingCache is a CoreDNS plugin.
 type ArchivingCache struct {
-	Next plugin.Handler
-
+	Next          plugin.Handler
 	cache         *Cache
 	contentWriter *ContentWriterClient
-	logClient     *logclient.LogClient
-
-	now time.Time
+	logWriter     *LogWriterClient
+	now           time.Time
+	singleflight.Group
 }
 
 // NewArchivingCache returns a new instance of ArchivingCache
-func NewArchivingCache(cache *Cache, logClient *logclient.LogClient, cw *ContentWriterClient) *ArchivingCache {
+func NewArchivingCache(cache *Cache, lw *LogWriterClient, cw *ContentWriterClient) *ArchivingCache {
 	return &ArchivingCache{
 		cache:         cache,
-		logClient:     logClient,
+		logWriter:     lw,
 		contentWriter: cw,
 		now:           time.Now().UTC(),
 	}
 }
 
 func (a *ArchivingCache) Ready() bool {
-	return a.contentWriter.GetState() != connectivity.Shutdown
+	return a.logWriter.Ready() && a.contentWriter.Ready()
 }
 
 // ServeDNS implements the plugin.Handler interface.
 func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
+	val, err, shared := a.Do(r.Question[0].String(), func() (interface{}, error) {
+		rec := NewRecorder(w)
+
+		rc, err := a.serveDNS(ctx, rec, r)
+		if err != nil {
+			rec.Rcode = rc
+		}
+		return rec, err
+	})
+	rec := val.(*Recorder)
+	if err != nil {
+		return rec.Rcode, err
+	}
+
+	msg := rec.Msg
+	if shared {
+		msg = msg.Copy().SetRcode(r, msg.Rcode)
+	}
+
+	w.WriteMsg(msg)
+	return 0, nil
+}
+
+// ServeDNS implements the plugin.Handler interface.
+func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
 	state := &request.Request{
 		Req: r,
 		W:   w,
@@ -64,99 +83,90 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 	// server is the address of the dns server serving the request
 	server := metrics.WithServer(ctx)
 	fetchStart := time.Now().UTC()
+	// collectionId and executionId is set by the resolver plugin
 	collectionId, hasCollectionId := ctx.Value(resolve.CollectionIdKey{}).(string)
 	executionId, _ := ctx.Value(resolve.ExecutionIdKey{}).(string)
-	key := state.Name() + state.Class() + state.Type()
+	// cache key
+	key := state.Name() + state.Type()
+
 	var msg *dns.Msg
 
 	entry := a.get(key, server)
 	if entry == nil {
-		// not found in cache
 		var proxyAddr string
 		ctx = context.WithValue(ctx, forward.ProxyKey{}, &proxyAddr)
+
 		nw := nonwriter.New(w)
+
 		rc, err := plugin.NextOrFailure(a.Name(), a.Next, ctx, nw, r)
-		if rc != dns.RcodeSuccess {
+		if err != nil {
 			return rc, err
 		}
-		if proxyAddr == "" {
-			return dns.RcodeServerFailure, errors.New("failed to get proxy address")
-		}
+
 		msg = nw.Msg
 
-		// only cache/archive msg if collectionId is part of context
 		if hasCollectionId {
-		out:
-			for _, answer := range msg.Answer {
-				switch dnsRecord := answer.(type) {
-				case *dns.A, *dns.AAAA, *dns.PTR:
-					msg.Answer = []dns.RR{dnsRecord}
-
-					// cache the response
-					err := a.set(key, msg, collectionId, proxyAddr, server)
-					if err != nil {
-						log.Warningf("Failed to cache: %v: %v", key, err)
-					}
-					// archive the response
-					a.archive(state, msg, executionId, collectionId, proxyAddr, fetchStart)
-					break out
-				}
+			mt, _ := response.Typify(msg, a.now)
+			if err := a.set(key, mt, msg, collectionId, proxyAddr, server); err != nil {
+				log.Errorf("%v: %v", key, err)
+			}
+			if err = a.archive(state, mt, msg, executionId, collectionId, proxyAddr, fetchStart); err != nil {
+				log.Errorf("%v: %v", key, err)
 			}
 		}
 	} else {
-		// found in cache
-		msg = entry.Msg
+		msg = entry.Msg.SetRcode(r, entry.Msg.Rcode)
 
-		if hasCollectionId {
-			if len(collectionId) > 0 && !entry.HasCollectionId(collectionId) {
-				entry.CollectionIds = append(entry.CollectionIds, collectionId)
-				err := a.update(key, entry)
-				if err != nil {
-					log.Warningf("Failed to update existing cache entry: %v, %v", state.Name(), err)
-				}
-				a.archive(state, msg, executionId, collectionId, entry.ProxyAddr, fetchStart)
+		if hasCollectionId && collectionId != "" && !entry.HasCollectionId(collectionId) {
+			if err := a.update(key, entry, collectionId); err != nil {
+				log.Errorf("%v: %v", key, err)
+			}
+			mt, _ := response.Typify(msg, a.now)
+			if err := a.archive(state, mt, msg, executionId, collectionId, entry.ProxyAddr, fetchStart); err != nil {
+				log.Errorf("%v: %v", key, err)
 			}
 		}
 	}
 
-	w.WriteMsg(msg.SetReply(r))
+	w.WriteMsg(msg)
 	return 0, nil
 }
 
-func (a *ArchivingCache) update(key string, entry *CacheEntry) error {
+func (a *ArchivingCache) update(key string, entry *CacheEntry, collectionId string) error {
+	entry.CollectionIds = append(entry.CollectionIds, collectionId)
+
 	err := a.cache.Set(key, entry)
 	if err != nil {
-		return fmt.Errorf("failed to update cache entry: %v, %v, %v", key, entry, err)
+		return fmt.Errorf("failed to update cache entry: %v, %v, %w", key, entry, err)
 	}
+
 	return nil
 }
 
 // set caches a new record.
-func (a *ArchivingCache) set(key string, msg *dns.Msg, collectionId string, proxyAddr string, server string) error {
+func (a *ArchivingCache) set(key string, t response.Type, msg *dns.Msg, collectionId string, proxyAddr string, server string) error {
+	switch t {
+	case response.NoError, response.NameError, response.Delegation, response.NoData:
+		// cache these response types
+	default:
+		return nil
+	}
+
 	entry := &CacheEntry{
 		Msg:       msg.Copy(),
 		ProxyAddr: proxyAddr,
-	}
-	if len(collectionId) > 0 {
-		entry.CollectionIds = append(entry.CollectionIds, collectionId)
-	} else {
-		log.Debugf("Caching record without collection ref: %s %v", key, entry)
+		CollectionIds: []string{collectionId},
 	}
 
-	mt, _ := response.Typify(msg, a.now)
-	switch mt {
-	// only cache the following record types
-	case response.NoError, response.Delegation, response.NameError, response.NoData:
-		err := a.cache.Set(key, entry)
-		if err != nil {
-			return fmt.Errorf("failed to cache entry: %v, %v, %v", key, entry, err)
-		}
-		CacheSize.WithLabelValues(server, Success).Set(float64(a.cache.Len()))
-		log.Debugf("Cache set: %s, %v", key, entry)
-		return nil
-	default:
-		return fmt.Errorf("not caching type classification: %d", mt)
+	err := a.cache.Set(key, entry)
+	if err != nil {
+		return fmt.Errorf("failed to cache entry: %s: %w", key, err)
 	}
+	log.Debugf("Cache set: %s, %v", key, entry)
+
+	CacheSize.WithLabelValues(server, Success).Set(float64(a.cache.Len()))
+
+	return nil
 }
 
 // get returns a cached entry if it exists.
@@ -173,48 +183,47 @@ func (a *ArchivingCache) get(key string, server string) *CacheEntry {
 }
 
 // archive writes a WARC record and a crawl log.
-func (a *ArchivingCache) archive(state *request.Request, msg *dns.Msg, executionId string, collectionId string, proxyAddr string, fetchStart time.Time) {
+func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *dns.Msg, executionId string, collectionId string, proxyAddr string, fetchStart time.Time) error {
+	if t != response.NoError || len(msg.Answer) == 0 {
+		return nil
+	}
+
 	fetchDurationMs := (time.Now().Sub(fetchStart).Nanoseconds() + 500000) / 1000000
-	requestedHost := strings.Trim(state.Name(), ".")
+	requestedHost := strings.TrimSuffix(state.Name(), ".")
+
 	payload := []byte(fmt.Sprintf("%d%02d%02d%02d%02d%02d\n%s\n",
 		fetchStart.Year(), fetchStart.Month(), fetchStart.Day(),
 		fetchStart.Hour(), fetchStart.Minute(), fetchStart.Second(), msg.Answer[0]))
+	size := len(payload)
 
-	payload, reply, err := a.contentWriter.writeRecord(payload, fetchStart, requestedHost, proxyAddr, executionId, collectionId)
+	reply, err := a.contentWriter.WriteRecord(payload, fetchStart, requestedHost, proxyAddr, executionId, collectionId)
 	if err != nil {
-		log.Errorf("Failed to write WARC record: %v", err)
-	} else {
-		err := a.WriteCrawlLog(payload, reply.GetMeta().GetRecordMeta()[0], requestedHost, fetchStart, fetchDurationMs, proxyAddr, executionId)
-		if err != nil {
-			log.Error("Failed to write crawl log: %w", err)
-		}
+		return fmt.Errorf("failed to write WARC record: %w", err)
 	}
+
+	err = a.logWriter.WriteCrawlLog(reply.GetMeta().GetRecordMeta()[0], size, requestedHost, fetchStart, fetchDurationMs, proxyAddr, executionId)
+	if err != nil {
+		return fmt.Errorf("failed to write crawl log: %w", err)
+	}
+
+	return nil
 }
 
 // Name implements the Handler interface.
 func (a *ArchivingCache) Name() string { return "archivingcache" }
 
-// WriteCrawlLog stores a crawl log of a dns request/response.
-func (a *ArchivingCache) WriteCrawlLog(payload []byte, record *contentwriterV1.WriteResponseMeta_RecordMeta, requestedHost string, fetchStart time.Time, fetchDurationMs int64, proxyAddr string, executionId string) error {
-	crawlLog := &logV1.CrawlLog{
-		ExecutionId:         executionId,
-		RecordType:          "resource",
-		RequestedUri:        "dns:" + requestedHost,
-		DiscoveryPath:       "P",
-		StatusCode:          1,
-		TimeStamp:           timestamppb.New(time.Now().UTC()),
-		FetchTimeStamp:      timestamppb.New(fetchStart),
-		FetchTimeMs:         fetchDurationMs,
-		IpAddress:           proxyAddr,
-		ContentType:         "text/dns",
-		Size:                int64(len(payload)),
-		WarcId:              record.GetWarcId(),
-		BlockDigest:         record.GetBlockDigest(),
-		PayloadDigest:       record.GetPayloadDigest(),
-		CollectionFinalName: record.GetCollectionFinalName(),
-		StorageRef:          record.GetStorageRef(),
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	return a.logClient.WriteCrawlLogs(ctx, []*logV1.CrawlLog{crawlLog})
+type Recorder struct {
+	dns.ResponseWriter
+	Rcode int
+	Msg   *dns.Msg
+}
+
+// NewRecorder makes and returns a new Recorder.
+func NewRecorder(w dns.ResponseWriter) *Recorder { return &Recorder{ResponseWriter: w} }
+
+// WriteMsg records the message and the response code, but doesn't write anything to the client.
+func (w *Recorder) WriteMsg(res *dns.Msg) error {
+	w.Msg = res
+	w.Rcode = res.Rcode
+	return nil
 }

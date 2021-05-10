@@ -1,7 +1,6 @@
-package archivingcache
+package test
 
 import (
-	"fmt"
 	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
 	"net"
 
@@ -15,9 +14,11 @@ import (
 type LogServiceMock struct {
 	logV1.UnimplementedLogServer
 	*grpc.Server
+	listener net.Listener
 
-	CrawlLogs []*logV1.CrawlLog
-	m         sync.Mutex
+	m        sync.Mutex
+	len      int
+	CrawlLog *logV1.CrawlLog
 }
 
 func (s *LogServiceMock) WriteCrawlLog(stream logV1.Log_WriteCrawlLogServer) error {
@@ -30,8 +31,8 @@ func (s *LogServiceMock) WriteCrawlLog(stream logV1.Log_WriteCrawlLogServer) err
 			return err
 		}
 		s.m.Lock()
-		crawlLog := req.GetCrawlLog()
-		s.CrawlLogs = append(s.CrawlLogs, crawlLog)
+		s.len++
+		s.CrawlLog = req.GetCrawlLog()
 		s.m.Unlock()
 	}
 	return nil
@@ -42,22 +43,24 @@ func (s *LogServiceMock) Close() {
 	s.GracefulStop()
 }
 
+func (s *LogServiceMock) Reset() {
+	s.m.Lock()
+	s.len = 0
+	s.CrawlLog = nil
+	s.m.Unlock()
+}
+
+func (s *LogServiceMock) Len() int {
+	return s.len
+}
+
 // NewContentWriterServerMock creates a new ContentWriterServerMock
-func NewLogServiceMock(port int) *LogServiceMock {
-	addr := fmt.Sprintf("localhost:%d", port)
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
+func NewLogServiceMock() *LogServiceMock {
 	logService := &LogServiceMock{
 		Server: grpc.NewServer(),
 	}
 	logV1.RegisterLogServer(logService, logService)
 	reflection.Register(logService.Server)
-	go func() {
-		log.Infof("LogServiceMock listening on port: %d", port)
-		_ = logService.Serve(lis)
-	}()
 
 	return logService
 }
