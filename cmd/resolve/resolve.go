@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	vm "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
+	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
 	"google.golang.org/grpc"
 	"os"
 	"time"
@@ -26,26 +26,24 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := vm.NewDnsResolverClient(conn)
+	client := dnsresolverV1.NewDnsResolverClient(conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 
 	args := flag.Args()
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(os.Stderr, "Missing hostname(s)")
+		_, _ = fmt.Fprintln(os.Stderr, "Error: Missing hostname(s)")
 		flag.Usage()
 	}
 
 	for _, host := range args {
-		start := time.Now()
-
-		response, err := client.Resolve(ctx, &vm.ResolveRequest{Host: host, Port: 80})
+		response, err := client.Resolve(ctx, &dnsresolverV1.ResolveRequest{Host: host, Port: 80})
 		if err != nil {
-			fmt.Printf("%v\n", err)
+			fmt.Fprintln(os.Stderr, err)
+			break
+		} else {
+			fmt.Println(response.Host, response.TextualIp)
 		}
-
-		fmt.Printf("time: %v\n", time.Since(start))
-		fmt.Println(response)
 	}
 }

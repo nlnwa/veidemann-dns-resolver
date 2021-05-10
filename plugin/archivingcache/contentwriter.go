@@ -4,53 +4,38 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
-	"github.com/golang/protobuf/ptypes"
 	configV1 "github.com/nlnwa/veidemann-api/go/config/v1"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/connection"
+	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
 	"time"
 )
 
-// ContentWriterClient holds the connections for ContentWriter and Veidemann database
+// ContentWriterClient holds the connections for ContentWriterClient and Veidemann database
 type ContentWriterClient struct {
-	*connection.Connection
-	client contentwriterV1.ContentWriterClient
+	*serviceconnections.Connection
+	contentwriterV1.ContentWriterClient
 }
 
 // NewContentWriterClient creates a new ContentWriterClient object
-func NewContentWriterClient(contentWriterHost string, contentWriterPort int) *ContentWriterClient {
-	c := &ContentWriterClient{
-		Connection: connection.New("contentWriter",
-			connection.WithConnectTimeout(30*time.Second),
-			connection.WithHost(contentWriterHost),
-			connection.WithPort(contentWriterPort)),
+func NewContentWriterClient(opts ...serviceconnections.ConnectionOption) *ContentWriterClient {
+	return &ContentWriterClient{
+		Connection: serviceconnections.NewClientConn("Content Writer", opts...),
 	}
-
-	return c
 }
 
-// connect establishes connections
-func (c *ContentWriterClient) connect() error {
-	if conn, err := c.Dial(); err != nil {
+// Connect establishes connections
+func (c *ContentWriterClient) Connect() error {
+	if err := c.Connection.Connect(); err != nil {
 		return err
-	} else {
-		c.client = contentwriterV1.NewContentWriterClient(conn)
-		return nil
 	}
-}
-
-func (c *ContentWriterClient) disconnect() error {
-	if c.ClientConn != nil {
-		return c.Close()
-	}
+	c.ContentWriterClient = contentwriterV1.NewContentWriterClient(c.ClientConn)
 	return nil
 }
 
-// writeRecord writes a WARC record.
-func (c *ContentWriterClient) writeRecord(payload []byte, fetchStart time.Time, requestedHost string, proxyAddr string, executionId string, collectionId string) ([]byte, *contentwriterV1.WriteReply, error) {
-	ts, _ := ptypes.TimestampProto(fetchStart)
-
+// WriteRecord writes a WARC record.
+func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, requestedHost string, proxyAddr string, executionId string, collectionId string) (*contentwriterV1.WriteReply, error) {
 	d := sha1.New()
 	d.Write(payload)
 	digest := fmt.Sprintf("sha1:%x", d.Sum(nil))
@@ -69,7 +54,7 @@ func (c *ContentWriterClient) writeRecord(payload []byte, fetchStart time.Time, 
 					},
 				},
 				TargetUri:      "dns:" + requestedHost,
-				FetchTimeStamp: ts,
+				FetchTimeStamp: timestamppb.New(fetchStart),
 				IpAddress:      proxyAddr,
 				ExecutionId:    executionId,
 				CollectionRef: &configV1.ConfigRef{
@@ -92,9 +77,9 @@ func (c *ContentWriterClient) writeRecord(payload []byte, fetchStart time.Time, 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	stream, err := c.client.Write(ctx)
+	stream, err := c.ContentWriterClient.Write(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open stream to content writer: %w", err)
+		return nil, fmt.Errorf("failed to open stream to content writer: %w", err)
 	}
 
 	if err := stream.Send(metaRequest); err != nil {
@@ -102,19 +87,21 @@ func (c *ContentWriterClient) writeRecord(payload []byte, fetchStart time.Time, 
 			// get server side error
 			_, err = stream.CloseAndRecv()
 		}
-		return nil, nil, fmt.Errorf("failed to send meta request to content writer: %w", err)
+		return nil, fmt.Errorf("failed to send meta request to content writer: %w", err)
 	}
+
 	if err := stream.Send(payloadRequest); err != nil {
 		if err == io.EOF {
 			// get server side error
 			_, err = stream.CloseAndRecv()
 		}
-		return nil, nil, fmt.Errorf("failed to send payload request to content writer: %w", err)
+		return nil, fmt.Errorf("failed to send payload request to content writer: %w", err)
 	}
 
-	if reply, err := stream.CloseAndRecv(); err != nil && err != io.EOF {
-		return nil, nil, fmt.Errorf("error closing stream to content writer: %w", err)
+	reply, err := stream.CloseAndRecv()
+	if err == io.EOF {
+		return reply, nil
 	} else {
-		return payload, reply, nil
+		return reply, err
 	}
 }
