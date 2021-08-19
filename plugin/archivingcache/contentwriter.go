@@ -41,16 +41,9 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 	d.Write(payload)
 	digest := fmt.Sprintf("sha1:%x", d.Sum(nil))
 
-	// Assume the proxy address is a host:port pair
-	host, _, err := net.SplitHostPort(proxyAddr)
+	ipAddress, err := parseHostPortOrIP(proxyAddr)
 	if err != nil {
-		// Try to parse proxy address as IP address
-		ip := net.ParseIP(proxyAddr)
-		if ip == nil {
-			return nil, fmt.Errorf("failed to parse proxy address: %w", err)
-		} else {
-			host = ip.String()
-		}
+		return nil, fmt.Errorf("failed to parse proxy address as host:port pair or IP address: %w", err)
 	}
 
 	metaRequest := &contentwriterV1.WriteRequest{
@@ -68,7 +61,7 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 				},
 				TargetUri:      "dns:" + requestedHost,
 				FetchTimeStamp: timestamppb.New(fetchStart),
-				IpAddress:      host,
+				IpAddress:      ipAddress,
 				ExecutionId:    executionId,
 				CollectionRef: &configV1.ConfigRef{
 					Kind: configV1.Kind_collection,
@@ -117,4 +110,19 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 	} else {
 		return reply, err
 	}
+}
+
+func parseHostPortOrIP(addr string) (string, error) {
+	// Assume the proxy address is a host:port pair
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Try to parse proxy address as IP address
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			return "", err
+		} else {
+			return ip.String(), nil
+		}
+	}
+	return host, nil
 }
