@@ -48,7 +48,7 @@ func (l *LogWriterClient) Connect() error {
 }
 
 // WriteCrawlLog stores a crawl log of a dns request/response.
-func (l *LogWriterClient) WriteCrawlLog(record *contentwriterV1.WriteResponseMeta_RecordMeta, size int, requestedHost string, fetchStart time.Time, fetchDurationMs int64, proxyAddr string, executionId string) error {
+func (l *LogWriterClient) WriteCrawlLog(record *contentwriterV1.WriteResponseMeta_RecordMeta, size int, requestedHost string, fetchStart time.Time, fetchDurationMs int64, ipAddress string, executionId string) error {
 	crawlLog := &logV1.CrawlLog{
 		ExecutionId:         executionId,
 		RecordType:          "resource",
@@ -58,7 +58,7 @@ func (l *LogWriterClient) WriteCrawlLog(record *contentwriterV1.WriteResponseMet
 		TimeStamp:           timestamppb.New(time.Now().UTC()),
 		FetchTimeStamp:      timestamppb.New(fetchStart),
 		FetchTimeMs:         fetchDurationMs,
-		IpAddress:           proxyAddr,
+		IpAddress:           ipAddress,
 		ContentType:         "text/dns",
 		Size:                int64(size),
 		WarcId:              record.GetWarcId(),

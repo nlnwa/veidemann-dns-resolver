@@ -15,6 +15,7 @@ import (
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"golang.org/x/sync/singleflight"
+	"net"
 	"strings"
 	"time"
 )
@@ -106,11 +107,15 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 		msg = nw.Msg
 
 		if hasCollectionId {
+			proxyIpAddr, err := parseHostPortOrIP(proxyAddr)
+			if err != nil {
+				log.Errorf("failed to parse proxy address \"%s\" as host:port pair or IP address: %v", proxyAddr, err)
+			}
 			mt, _ := response.Typify(msg, a.now)
-			if err := a.set(key, mt, msg, collectionId, proxyAddr, server); err != nil {
+			if err := a.set(key, mt, msg, collectionId, proxyIpAddr, server); err != nil {
 				log.Errorf("%v: %v", key, err)
 			}
-			if err = a.archive(state, mt, msg, executionId, collectionId, proxyAddr, fetchStart); err != nil {
+			if err = a.archive(state, mt, msg, executionId, collectionId, proxyIpAddr, fetchStart); err != nil {
 				log.Errorf("%v: %v", key, err)
 			}
 		}
@@ -211,6 +216,22 @@ func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *d
 
 // Name implements the Handler interface.
 func (a *ArchivingCache) Name() string { return "archivingcache" }
+
+// parseHostPortOrIP parses a host:port pair or IP address into an IP address.
+func parseHostPortOrIP(addr string) (string, error) {
+	// Assume the proxy address is a host:port pair
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Try to parse proxy address as IP address
+		ip := net.ParseIP(addr)
+		if ip == nil {
+			return "", err
+		} else {
+			return ip.String(), nil
+		}
+	}
+	return host, nil
+}
 
 type Recorder struct {
 	dns.ResponseWriter

@@ -35,7 +35,7 @@ func (c *ContentWriterClient) Connect() error {
 }
 
 // WriteRecord writes a WARC record.
-func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, requestedHost string, proxyAddr string, executionId string, collectionId string) (*contentwriterV1.WriteReply, error) {
+func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, requestedHost string, ipAddress string, executionId string, collectionId string) (*contentwriterV1.WriteReply, error) {
 	d := sha1.New()
 	d.Write(payload)
 	digest := fmt.Sprintf("sha1:%x", d.Sum(nil))
@@ -55,7 +55,7 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 				},
 				TargetUri:      "dns:" + requestedHost,
 				FetchTimeStamp: timestamppb.New(fetchStart),
-				IpAddress:      proxyAddr,
+				IpAddress:      ipAddress,
 				ExecutionId:    executionId,
 				CollectionRef: &configV1.ConfigRef{
 					Kind: configV1.Kind_collection,
