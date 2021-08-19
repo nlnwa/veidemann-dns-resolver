@@ -9,7 +9,6 @@ import (
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
-	"net"
 	"time"
 )
 
@@ -36,15 +35,10 @@ func (c *ContentWriterClient) Connect() error {
 }
 
 // WriteRecord writes a WARC record.
-func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, requestedHost string, proxyAddr string, executionId string, collectionId string) (*contentwriterV1.WriteReply, error) {
+func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, requestedHost string, ipAddress string, executionId string, collectionId string) (*contentwriterV1.WriteReply, error) {
 	d := sha1.New()
 	d.Write(payload)
 	digest := fmt.Sprintf("sha1:%x", d.Sum(nil))
-
-	ipAddress, err := parseHostPortOrIP(proxyAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse proxy address as host:port pair or IP address: %w", err)
-	}
 
 	metaRequest := &contentwriterV1.WriteRequest{
 		Value: &contentwriterV1.WriteRequest_Meta{
@@ -110,19 +104,4 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 	} else {
 		return reply, err
 	}
-}
-
-func parseHostPortOrIP(addr string) (string, error) {
-	// Assume the proxy address is a host:port pair
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		// Try to parse proxy address as IP address
-		ip := net.ParseIP(addr)
-		if ip == nil {
-			return "", err
-		} else {
-			return ip.String(), nil
-		}
-	}
-	return host, nil
 }
