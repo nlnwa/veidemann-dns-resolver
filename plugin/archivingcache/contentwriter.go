@@ -9,6 +9,7 @@ import (
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"io"
+	"net"
 	"time"
 )
 
@@ -40,6 +41,18 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 	d.Write(payload)
 	digest := fmt.Sprintf("sha1:%x", d.Sum(nil))
 
+	// Assume the proxy address is a host:port pair
+	host, _, err := net.SplitHostPort(proxyAddr)
+	if err != nil {
+		// Try to parse proxy address as IP address
+		ip := net.ParseIP(proxyAddr)
+		if ip == nil {
+			return nil, fmt.Errorf("failed to parse proxy address: %w", err)
+		} else {
+			host = ip.String()
+		}
+	}
+
 	metaRequest := &contentwriterV1.WriteRequest{
 		Value: &contentwriterV1.WriteRequest_Meta{
 			Meta: &contentwriterV1.WriteRequestMeta{
@@ -55,7 +68,7 @@ func (c *ContentWriterClient) WriteRecord(payload []byte, fetchStart time.Time, 
 				},
 				TargetUri:      "dns:" + requestedHost,
 				FetchTimeStamp: timestamppb.New(fetchStart),
-				IpAddress:      proxyAddr,
+				IpAddress:      host,
 				ExecutionId:    executionId,
 				CollectionRef: &configV1.ConfigRef{
 					Kind: configV1.Kind_collection,
