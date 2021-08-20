@@ -26,11 +26,8 @@ EXPOSE 8181
 ENV DNS_SERVER=8.8.8.8 \
     CONTENT_WRITER_HOST=veidemann-contentwriter \
     CONTENT_WRITER_PORT=8080 \
-    DB_HOST=localhost \
-    DB_PORT=28015 \
-    DB_USER=admin \
-    DB_PASSWORD=admin \
-    DB_NAME=veidemann
+    LOG_WRITER_HOST=veidemann-log-service \
+    LOG_WRITER_PORT=8080
 
 COPY --from=0 /build/veidemann-dns-resolver /veidemann-dns-resolver
 COPY Corefile.docker /Corefile
