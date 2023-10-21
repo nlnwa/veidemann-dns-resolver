@@ -4,6 +4,7 @@
     resolve :8053
     prometheus :9153
     reload 60s
+    metadata
     archivingcache {
         eviction 1h
         maxSizeMb 2048
