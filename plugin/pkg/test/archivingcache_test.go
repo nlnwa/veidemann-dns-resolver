@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/proxy"
 	"github.com/coredns/coredns/plugin/pkg/rcode"
 	"github.com/google/uuid"
 	"github.com/miekg/dns"
@@ -16,10 +17,10 @@ import (
 	"time"
 
 	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin/forward"
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/plugin/pkg/transport"
 	"github.com/coredns/coredns/plugin/test"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 )
@@ -79,8 +80,10 @@ func TestMain(m *testing.M) {
 	})
 
 	// setup forward plugin with server as proxy
+	testProxy := proxy.NewProxy("test", s.Addr, transport.DNS)
+	defer testProxy.Stop()
 	next := forward.New()
-	next.SetProxy(forward.NewProxy(s.Addr, transport.DNS))
+	next.SetProxy(testProxy)
 
 	// setup content writer service mock
 	cws = NewContentWriterServerMock()

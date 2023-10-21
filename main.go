@@ -4,14 +4,15 @@ package main
 import (
 	_ "github.com/coredns/coredns/plugin/debug"
 	_ "github.com/coredns/coredns/plugin/errors"
+	_ "github.com/coredns/coredns/plugin/forward"
 	_ "github.com/coredns/coredns/plugin/log"
 	_ "github.com/coredns/coredns/plugin/loop"
+	_ "github.com/coredns/coredns/plugin/metadata"
 	_ "github.com/coredns/coredns/plugin/metrics"
 	_ "github.com/coredns/coredns/plugin/ready"
 	_ "github.com/coredns/coredns/plugin/reload"
 
 	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/archivingcache"
-	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	_ "github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 
 	"github.com/coredns/coredns/core/dnsserver"
@@ -26,6 +27,7 @@ import (
 // (after) them during a request, but they must not
 // care what plugin above them are doing.
 var directives = []string{
+	"metadata",
 	"reload",
 	"debug",
 	"ready",

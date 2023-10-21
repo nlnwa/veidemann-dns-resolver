@@ -6,13 +6,13 @@ import (
 	"context"
 	"fmt"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/metrics"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/plugin/pkg/nonwriter"
 	"github.com/coredns/coredns/plugin/pkg/response"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"golang.org/x/sync/singleflight"
 	"net"
@@ -94,8 +94,6 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 
 	entry := a.get(key, server)
 	if entry == nil {
-		var proxyAddr string
-		ctx = context.WithValue(ctx, forward.ProxyKey{}, &proxyAddr)
 
 		nw := nonwriter.New(w)
 
@@ -107,6 +105,11 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 		msg = nw.Msg
 
 		if hasCollectionId {
+			var proxyAddr string
+			upstream := metadata.ValueFunc(ctx, "forward/upstream")
+			if upstream != nil {
+				proxyAddr = upstream()
+			}
 			proxyIpAddr, err := parseHostPortOrIP(proxyAddr)
 			if err != nil {
 				log.Errorf("failed to parse proxy address \"%s\" as host:port pair or IP address: %v", proxyAddr, err)

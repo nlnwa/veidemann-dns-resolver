@@ -5,6 +5,7 @@
     errors
     loop
     log
+    metadata
     forward . 8.8.8.8 1.1.1.1 9.9.9.9 {
         # except IGNORED_NAMES...
         # force_tcp
