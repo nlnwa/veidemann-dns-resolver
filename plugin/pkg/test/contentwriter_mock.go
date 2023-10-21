@@ -3,10 +3,10 @@ package test
 import (
 	"context"
 	"fmt"
-	"github.com/golang/protobuf/ptypes/empty"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"io"
 	"sync"
 )
@@ -78,13 +78,13 @@ func (s *ContentWriterMock) Write(stream contentwriterV1.ContentWriter_WriteServ
 }
 
 // Flush implements ContentWriterServer
-func (s *ContentWriterMock) Flush(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
-	return &empty.Empty{}, nil
+func (s *ContentWriterMock) Flush(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // Delete implements ContentWriterServer
-func (s *ContentWriterMock) Delete(ctx context.Context, in *empty.Empty) (*empty.Empty, error) {
-	return &empty.Empty{}, nil
+func (s *ContentWriterMock) Delete(ctx context.Context, in *emptypb.Empty) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // Close implements ContentWriterServer
