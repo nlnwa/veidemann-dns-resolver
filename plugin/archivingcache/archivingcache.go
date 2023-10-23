@@ -196,7 +196,7 @@ func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *d
 		return nil
 	}
 
-	fetchDurationMs := (time.Now().Sub(fetchStart).Nanoseconds() + 500000) / 1000000
+	fetchDurationMs := (time.Since(fetchStart).Nanoseconds() + 500000) / 1000000
 	requestedHost := strings.TrimSuffix(state.Name(), ".")
 
 	payload := []byte(fmt.Sprintf("%d%02d%02d%02d%02d%02d\n%s\n",
