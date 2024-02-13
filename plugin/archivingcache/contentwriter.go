@@ -4,12 +4,13 @@ import (
 	"context"
 	"crypto/sha1"
 	"fmt"
+	"io"
+	"time"
+
 	configV1 "github.com/nlnwa/veidemann-api/go/config/v1"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"io"
-	"time"
 )
 
 // ContentWriterClient holds the connections for ContentWriterClient and Veidemann database

@@ -3,12 +3,13 @@ package test
 import (
 	"context"
 	"fmt"
+	"io"
+	"sync"
+
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"io"
-	"sync"
 )
 
 // ContentWriterMock is used to implement ContentWriterServer.

@@ -1,10 +1,11 @@
 package archivingcache
 
 import (
-	"github.com/miekg/dns"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/miekg/dns"
 )
 
 func createRequest(query string) (*dns.Msg, []byte) {

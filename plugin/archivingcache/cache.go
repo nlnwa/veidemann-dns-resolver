@@ -3,9 +3,10 @@ package archivingcache
 import (
 	"bytes"
 	"fmt"
+	"time"
+
 	"github.com/allegro/bigcache"
 	"github.com/miekg/dns"
-	"time"
 )
 
 // Cache is a wrapper around *bigcache.BigCache which takes care of marshalling and unmarshalling of dns.Msg.
@@ -81,6 +82,7 @@ func (c *Cache) Get(key string) (*CacheEntry, error) {
 func (c *Cache) Reset() error {
 	return c.cache.Reset()
 }
+
 type CacheEntry struct {
 	ProxyAddr     string
 	CollectionIds []string

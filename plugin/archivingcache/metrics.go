@@ -2,7 +2,6 @@ package archivingcache
 
 import (
 	"github.com/coredns/coredns/plugin"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )

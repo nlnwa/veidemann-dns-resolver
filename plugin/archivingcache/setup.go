@@ -2,12 +2,13 @@ package archivingcache
 
 import (
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
-	"strconv"
-	"time"
 )
 
 // init registers this plugin within the Caddy plugin framework. It uses "archivingcache" as the

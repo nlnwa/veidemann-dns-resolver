@@ -18,12 +18,13 @@ package archivingcache
 
 import (
 	"context"
+	"time"
+
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	"github.com/nlnwa/veidemann-log-service/pkg/logservice"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 type LogWriterClient struct {

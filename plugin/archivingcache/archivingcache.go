@@ -162,8 +162,8 @@ func (a *ArchivingCache) set(key string, t response.Type, msg *dns.Msg, collecti
 	}
 
 	entry := &CacheEntry{
-		Msg:       msg.Copy(),
-		ProxyAddr: proxyAddr,
+		Msg:           msg.Copy(),
+		ProxyAddr:     proxyAddr,
 		CollectionIds: []string{collectionId},
 	}
 
