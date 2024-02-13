@@ -5,6 +5,10 @@ package archivingcache
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/coredns/coredns/plugin"
 	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/metrics"
@@ -15,9 +19,6 @@ import (
 	"github.com/miekg/dns"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"golang.org/x/sync/singleflight"
-	"net"
-	"strings"
-	"time"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use archive.Info and
@@ -192,6 +193,9 @@ func (a *ArchivingCache) get(key string, server string) *CacheEntry {
 
 // archive writes a WARC record and a crawl log.
 func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *dns.Msg, executionId string, collectionId string, proxyAddr string, fetchStart time.Time) error {
+	if a.contentWriter == nil {
+		return nil
+	}
 	if t != response.NoError || len(msg.Answer) == 0 {
 		return nil
 	}
@@ -209,6 +213,9 @@ func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *d
 		return fmt.Errorf("failed to write WARC record: %w", err)
 	}
 
+	if a.logWriter == nil {
+		return nil
+	}
 	err = a.logWriter.WriteCrawlLog(reply.GetMeta().GetRecordMeta()[0], size, requestedHost, fetchStart, fetchDurationMs, proxyAddr, executionId)
 	if err != nil {
 		return fmt.Errorf("failed to write crawl log: %w", err)
