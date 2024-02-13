@@ -2,12 +2,6 @@ package test
 
 import (
 	"context"
-	"github.com/coredns/coredns/plugin"
-	"github.com/coredns/coredns/plugin/pkg/proxy"
-	"github.com/coredns/coredns/plugin/pkg/rcode"
-	"github.com/google/uuid"
-	"github.com/miekg/dns"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/archivingcache"
 	"net"
 	"os"
 	"strconv"
@@ -16,8 +10,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/pkg/proxy"
+	"github.com/coredns/coredns/plugin/pkg/rcode"
+	"github.com/google/uuid"
+	"github.com/miekg/dns"
+	"github.com/nlnwa/veidemann-dns-resolver/plugin/archivingcache"
+
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin/forward"
+	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/plugin/pkg/transport"
 	"github.com/coredns/coredns/plugin/test"
@@ -26,11 +28,12 @@ import (
 )
 
 var (
-	cache     *archivingcache.Cache
-	ls        *LogServiceMock
-	cws       *ContentWriterMock
-	serverCtx context.Context
-	p         plugin.Handler
+	cache      *archivingcache.Cache
+	ls         *LogServiceMock
+	cws        *ContentWriterMock
+	serverCtx  context.Context
+	serverAddr string
+	p          plugin.Handler
 )
 
 func reset() {
@@ -73,16 +76,19 @@ func TestMain(m *testing.M) {
 
 		w.WriteMsg(msg)
 	})
+	// Server address without brackets and port (to be used in forward plugin metadata test)
+	serverAddr = strings.Trim(s.Addr[:strings.LastIndex(s.Addr, ":")], "[]")
 
-	// setup
-	serverCtx = context.WithValue(context.Background(), dnsserver.Key{}, &dnsserver.Server{
+	// Initialize server context with metadata and server
+	metadataCtx := metadata.ContextWithMetadata(context.TODO())
+	serverCtx = context.WithValue(metadataCtx, dnsserver.Key{}, &dnsserver.Server{
 		Addr: new(test.ResponseWriter).LocalAddr().String(),
 	})
 
 	// setup forward plugin with server as proxy
 	testProxy := proxy.NewProxy("test", s.Addr, transport.DNS)
-	defer testProxy.Stop()
 	next := forward.New()
+
 	next.SetProxy(testProxy)
 
 	// setup content writer service mock
@@ -148,6 +154,7 @@ func TestMain(m *testing.M) {
 	_ = cw.Close()
 	ls.Close()
 	cws.Close()
+	testProxy.Stop()
 	s.Close()
 
 	os.Exit(code)
@@ -167,6 +174,39 @@ func TestNonExistentDomain(t *testing.T) {
 	}
 	if rec.Rcode != dns.RcodeNameError {
 		t.Errorf("Expected %s, got %s", rcode.ToString(dns.RcodeNameError), rcode.ToString(rec.Rcode))
+	}
+}
+func TestForwardPluginMetadata(t *testing.T) {
+	defer reset()
+
+	rec := dnstest.NewRecorder(new(test.ResponseWriter))
+	req := tests["example.org"].Msg()
+
+	ctx := context.WithValue(serverCtx, resolve.CollectionIdKey{}, "1")
+	rc, err := p.ServeDNS(ctx, rec, req)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if rc != dns.RcodeSuccess {
+		t.Errorf("Unexpected response code: %d %s", rc, rcode.ToString(rc))
+	}
+
+	msg := rec.Msg
+	if msg == nil {
+		t.Fatalf("Expected message, got nil")
+	}
+	if len(msg.Answer) == int(dns.TypeNone) {
+		t.Errorf("Expected answer, got none")
+	}
+	entry, err := cache.Get("example.org." + "A")
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if entry == nil {
+		t.Fatalf("Expected cache entry, got nil")
+	}
+	if entry.ProxyAddr != serverAddr {
+		t.Errorf("Expected proxyAddress %s, got %s", serverAddr, entry.ProxyAddr)
 	}
 }
 
