@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 			msg.Answer = c.Answer
 		}
 
-		w.WriteMsg(msg)
+		_ = w.WriteMsg(msg)
 	})
 	// Server address without brackets and port (to be used in forward plugin metadata test)
 	serverAddr = strings.Trim(s.Addr[:strings.LastIndex(s.Addr, ":")], "[]")

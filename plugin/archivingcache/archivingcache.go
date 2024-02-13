@@ -72,7 +72,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 		msg = msg.Copy().SetRcode(r, msg.Rcode)
 	}
 
-	w.WriteMsg(msg)
+	_ = w.WriteMsg(msg)
 	return 0, nil
 }
 
@@ -137,7 +137,7 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 		}
 	}
 
-	w.WriteMsg(msg)
+	_ = w.WriteMsg(msg)
 	return 0, nil
 }
 

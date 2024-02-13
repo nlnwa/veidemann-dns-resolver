@@ -20,10 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/coredns/coredns/plugin/pkg/log"
-	"google.golang.org/grpc"
 	"strconv"
 	"time"
+
+	"github.com/coredns/coredns/plugin/pkg/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // connectionOptions configure a connection. connectionOptions are set by the ConnectionOption
@@ -76,7 +78,7 @@ func defaultConnectionOptions(serviceName string) connectionOptions {
 
 func (opts *connectionOptions) connectService() (*grpc.ClientConn, error) {
 	dialOpts := append(opts.dialOptions,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 
 	dialCtx, dialCancel := context.WithTimeout(context.Background(), opts.connectTimeout)

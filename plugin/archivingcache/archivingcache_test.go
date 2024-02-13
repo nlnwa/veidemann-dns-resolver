@@ -4,6 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
@@ -18,10 +23,6 @@ import (
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"net"
-	"os"
-	"testing"
-	"time"
 )
 
 var (
@@ -215,7 +216,9 @@ func TestCache(t *testing.T) {
 	if err := a.OnStartup(); err != nil {
 		t.Fatal(err)
 	}
-	defer a.OnShutdown()
+	defer func() {
+		_ = a.OnShutdown()
+	}()
 
 	i := 0
 	for name, tt := range tests {
@@ -301,7 +304,7 @@ func assertRecord(t *testing.T, ctx context.Context, qname string, answer *dns.A
 		ts.Year(), ts.Month(), ts.Day(),
 		ts.Hour(), ts.Minute(), ts.Second(), answer)
 
-	if bytes.Compare(cws.Payload.Data, []byte(expectedPayload)) != 0 {
+	if !bytes.Equal(cws.Payload.Data, []byte(expectedPayload)) {
 		t.Errorf("Expected '%s', got: '%s'", expectedPayload, cws.Payload.Data)
 	}
 
@@ -382,14 +385,14 @@ func testHandler(cases map[string]test.Case, addr string) test.HandlerFunc {
 			msg = new(dns.Msg).SetRcode(r, dns.RcodeNameError)
 		}
 
-		w.WriteMsg(msg)
+		_ = w.WriteMsg(msg)
 		return 0, nil
 	}
 }
 
 func codeHandler(rcode int) test.HandlerFunc {
 	return func(_ context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-		w.WriteMsg(new(dns.Msg).SetRcode(r, rcode))
+		_ = w.WriteMsg(new(dns.Msg).SetRcode(r, rcode))
 		return 0, nil
 	}
 }
