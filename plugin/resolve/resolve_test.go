@@ -3,12 +3,13 @@ package resolve
 import (
 	"bytes"
 	"context"
+	"net"
+	"testing"
+
 	"github.com/coredns/coredns/plugin/test"
 	"github.com/miekg/dns"
 	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
 	"google.golang.org/grpc/peer"
-	"net"
-	"testing"
 )
 
 func TestExample(t *testing.T) {
@@ -34,7 +35,7 @@ func TestExample(t *testing.T) {
 		t.Errorf("Expected TextualIp to be 127.0.0.1, got: %s", reply.TextualIp)
 	}
 	expectedBytes := []byte{127, 0, 0, 1}
-	if bytes.Compare(reply.RawIp, expectedBytes) != 0 {
+	if !bytes.Equal(reply.RawIp, expectedBytes) {
 		t.Errorf("Expected RawIp to be %v, got: %v", expectedBytes, reply.RawIp)
 	}
 }
@@ -45,7 +46,7 @@ func MsgHandler(answer dns.RR) test.Handler {
 		reply := new(dns.Msg)
 		reply.SetReply(r)
 		reply.Answer = append(reply.Answer, answer)
-		w.WriteMsg(reply)
+		_ = w.WriteMsg(reply)
 		return reply.Rcode, nil
 	})
 }

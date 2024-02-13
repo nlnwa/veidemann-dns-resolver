@@ -4,7 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"testing"
+	"time"
+
 	"github.com/coredns/coredns/core/dnsserver"
+	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/pkg/dnstest"
 	"github.com/coredns/coredns/plugin/pkg/rcode"
 	"github.com/coredns/coredns/plugin/test"
@@ -12,16 +18,11 @@ import (
 	"github.com/miekg/dns"
 	contentwriterV1 "github.com/nlnwa/veidemann-api/go/contentwriter/v1"
 	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
 	util "github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/test"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"net"
-	"os"
-	"testing"
-	"time"
 )
 
 var (
@@ -126,7 +127,7 @@ func TestNonExistentDomain(t *testing.T) {
 
 	a := NewArchivingCache(cache, nil, nil)
 	a.Next = codeHandler(dns.RcodeNameError)
-	
+
 	rec := dnstest.NewRecorder(new(test.ResponseWriter))
 	req := new(dns.Msg).SetQuestion("bogus.org.", dns.TypeA)
 
@@ -215,7 +216,9 @@ func TestCache(t *testing.T) {
 	if err := a.OnStartup(); err != nil {
 		t.Fatal(err)
 	}
-	defer a.OnShutdown()
+	defer func() {
+		_ = a.OnShutdown()
+	}()
 
 	i := 0
 	for name, tt := range tests {
@@ -225,6 +228,7 @@ func TestCache(t *testing.T) {
 			ctx := context.WithValue(context.Background(), dnsserver.Key{}, &dnsserver.Server{
 				Addr: "127.0.0.1",
 			})
+			ctx = metadata.ContextWithMetadata(ctx)
 			ctx = context.WithValue(ctx, resolve.CollectionIdKey{}, name)
 			// run first time
 			req := tt.Msg()
@@ -300,7 +304,7 @@ func assertRecord(t *testing.T, ctx context.Context, qname string, answer *dns.A
 		ts.Year(), ts.Month(), ts.Day(),
 		ts.Hour(), ts.Minute(), ts.Second(), answer)
 
-	if bytes.Compare(cws.Payload.Data, []byte(expectedPayload)) != 0 {
+	if !bytes.Equal(cws.Payload.Data, []byte(expectedPayload)) {
 		t.Errorf("Expected '%s', got: '%s'", expectedPayload, cws.Payload.Data)
 	}
 
@@ -360,9 +364,9 @@ func testHandler(cases map[string]test.Case, addr string) test.HandlerFunc {
 			Req: r,
 			W:   w,
 		}
-		if v, ok := ctx.Value(forward.ProxyKey{}).(*string); ok {
-			*v = addr
-		}
+		metadata.SetValueFunc(ctx, "forward/upstream", func() string {
+			return addr
+		})
 
 		for _, c := range cases {
 			if dns.Fqdn(c.Qname) == state.QName() {
@@ -381,18 +385,17 @@ func testHandler(cases map[string]test.Case, addr string) test.HandlerFunc {
 			msg = new(dns.Msg).SetRcode(r, dns.RcodeNameError)
 		}
 
-		w.WriteMsg(msg)
+		_ = w.WriteMsg(msg)
 		return 0, nil
 	}
 }
 
 func codeHandler(rcode int) test.HandlerFunc {
 	return func(_ context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-		w.WriteMsg(new(dns.Msg).SetRcode(r, rcode))
+		_ = w.WriteMsg(new(dns.Msg).SetRcode(r, rcode))
 		return 0, nil
 	}
 }
-
 
 func TestParseProxyAddress(t *testing.T) {
 	tests := []struct {

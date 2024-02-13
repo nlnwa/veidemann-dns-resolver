@@ -2,9 +2,9 @@ package archivingcache
 
 import (
 	"testing"
+	"time"
 
 	"github.com/coredns/caddy"
-	"time"
 )
 
 func TestSetup(t *testing.T) {

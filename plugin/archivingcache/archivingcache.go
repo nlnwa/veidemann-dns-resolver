@@ -5,19 +5,20 @@ package archivingcache
 import (
 	"context"
 	"fmt"
+	"net"
+	"strings"
+	"time"
+
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/metadata"
 	"github.com/coredns/coredns/plugin/metrics"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/plugin/pkg/nonwriter"
 	"github.com/coredns/coredns/plugin/pkg/response"
 	"github.com/coredns/coredns/request"
 	"github.com/miekg/dns"
-	"github.com/nlnwa/veidemann-dns-resolver/plugin/forward"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/resolve"
 	"golang.org/x/sync/singleflight"
-	"net"
-	"strings"
-	"time"
 )
 
 // Define log to be a logger with the plugin name in it. This way we can just use archive.Info and
@@ -71,7 +72,7 @@ func (a *ArchivingCache) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *
 		msg = msg.Copy().SetRcode(r, msg.Rcode)
 	}
 
-	w.WriteMsg(msg)
+	_ = w.WriteMsg(msg)
 	return 0, nil
 }
 
@@ -94,8 +95,6 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 
 	entry := a.get(key, server)
 	if entry == nil {
-		var proxyAddr string
-		ctx = context.WithValue(ctx, forward.ProxyKey{}, &proxyAddr)
 
 		nw := nonwriter.New(w)
 
@@ -107,6 +106,11 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 		msg = nw.Msg
 
 		if hasCollectionId {
+			var proxyAddr string
+			upstream := metadata.ValueFunc(ctx, "forward/upstream")
+			if upstream != nil {
+				proxyAddr = upstream()
+			}
 			proxyIpAddr, err := parseHostPortOrIP(proxyAddr)
 			if err != nil {
 				log.Errorf("failed to parse proxy address \"%s\" as host:port pair or IP address: %v", proxyAddr, err)
@@ -133,7 +137,7 @@ func (a *ArchivingCache) serveDNS(ctx context.Context, w dns.ResponseWriter, r *
 		}
 	}
 
-	w.WriteMsg(msg)
+	_ = w.WriteMsg(msg)
 	return 0, nil
 }
 
@@ -158,8 +162,8 @@ func (a *ArchivingCache) set(key string, t response.Type, msg *dns.Msg, collecti
 	}
 
 	entry := &CacheEntry{
-		Msg:       msg.Copy(),
-		ProxyAddr: proxyAddr,
+		Msg:           msg.Copy(),
+		ProxyAddr:     proxyAddr,
 		CollectionIds: []string{collectionId},
 	}
 
@@ -189,11 +193,14 @@ func (a *ArchivingCache) get(key string, server string) *CacheEntry {
 
 // archive writes a WARC record and a crawl log.
 func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *dns.Msg, executionId string, collectionId string, proxyAddr string, fetchStart time.Time) error {
+	if a.contentWriter == nil {
+		return nil
+	}
 	if t != response.NoError || len(msg.Answer) == 0 {
 		return nil
 	}
 
-	fetchDurationMs := (time.Now().Sub(fetchStart).Nanoseconds() + 500000) / 1000000
+	fetchDurationMs := (time.Since(fetchStart).Nanoseconds() + 500000) / 1000000
 	requestedHost := strings.TrimSuffix(state.Name(), ".")
 
 	payload := []byte(fmt.Sprintf("%d%02d%02d%02d%02d%02d\n%s\n",
@@ -206,6 +213,9 @@ func (a *ArchivingCache) archive(state *request.Request, t response.Type, msg *d
 		return fmt.Errorf("failed to write WARC record: %w", err)
 	}
 
+	if a.logWriter == nil {
+		return nil
+	}
 	err = a.logWriter.WriteCrawlLog(reply.GetMeta().GetRecordMeta()[0], size, requestedHost, fetchStart, fetchDurationMs, proxyAddr, executionId)
 	if err != nil {
 		return fmt.Errorf("failed to write crawl log: %w", err)

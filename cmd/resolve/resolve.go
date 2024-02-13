@@ -4,10 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
-	"google.golang.org/grpc"
 	"os"
 	"time"
+
+	dnsresolverV1 "github.com/nlnwa/veidemann-api/go/dnsresolver/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 var (
@@ -17,7 +19,7 @@ var (
 func main() {
 	flag.Parse()
 	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithInsecure())
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	conn, err := grpc.Dial(*serverAddr, opts...)
 	if err != nil {

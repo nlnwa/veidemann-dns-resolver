@@ -1,20 +1,18 @@
 package test
 
 import (
-	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
-	"net"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 	"io"
 	"sync"
+
+	logV1 "github.com/nlnwa/veidemann-api/go/log/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 // LogServiceMock is used to implement ContentWriterServer.
 type LogServiceMock struct {
 	logV1.UnimplementedLogServer
 	*grpc.Server
-	listener net.Listener
 
 	m        sync.Mutex
 	len      int

@@ -1,4 +1,4 @@
-FROM golang:1.15 as build
+FROM golang:1.21 as build
 
 WORKDIR /build
 
@@ -7,15 +7,16 @@ RUN go mod download
 
 COPY . .
 
-RUN go test ./...
-RUN CGO_ENABLED=0 go build -tags netgo
+# -s Omit the symbol table and debug information.
+# -w Omit the DWARF symbol table.
+RUN CGO_ENABLED=0 go build -ldflags="-s -w"
 
 
-FROM gcr.io/distroless/base
-LABEL maintainer="Norsk nettarkiv"
+FROM gcr.io/distroless/static-debian12:nonroot
+LABEL maintainer="marius.beck@nb.no"
 
 # dns port
-EXPOSE 53 53/udp
+EXPOSE 1053 1053/udp
 # veidemann.api.dnsresolver.Resolve
 EXPOSE 8053
 # prometheus metrics
@@ -29,7 +30,8 @@ ENV DNS_SERVER=8.8.8.8 \
     LOG_WRITER_HOST=veidemann-log-service \
     LOG_WRITER_PORT=8080
 
-COPY --from=0 /build/veidemann-dns-resolver /veidemann-dns-resolver
-COPY Corefile.docker /Corefile
+COPY --from=build /build/veidemann-dns-resolver /usr/local/sbin/veidemann-dns-resolver
+COPY --chown=nonroot:nonroot Corefile.docker /Corefile
 
-ENTRYPOINT ["/veidemann-dns-resolver"]
+ENTRYPOINT ["veidemann-dns-resolver"]
+CMD ["-conf", "/Corefile"]

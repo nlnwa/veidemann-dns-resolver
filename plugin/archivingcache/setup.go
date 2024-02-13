@@ -2,12 +2,13 @@ package archivingcache
 
 import (
 	"fmt"
+	"strconv"
+	"time"
+
 	"github.com/coredns/caddy"
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
 	"github.com/nlnwa/veidemann-dns-resolver/plugin/pkg/serviceconnections"
-	"strconv"
-	"time"
 )
 
 // init registers this plugin within the Caddy plugin framework. It uses "archivingcache" as the
@@ -38,11 +39,17 @@ func setup(c *caddy.Controller) error {
 
 // OnStartup connects to content writer and log writer.
 func (a *ArchivingCache) OnStartup() error {
+	if a.contentWriter == nil {
+		return nil
+	}
 	if err := a.contentWriter.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to cws: %w", err)
 	}
 	log.Infof("Connected to cws at: %s", a.contentWriter.Addr())
 
+	if a.logWriter == nil {
+		return nil
+	}
 	if err := a.logWriter.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
@@ -53,8 +60,12 @@ func (a *ArchivingCache) OnStartup() error {
 
 // OnShutdown closes connections to content writer and log writer.
 func (a *ArchivingCache) OnShutdown() (err error) {
-	err = a.contentWriter.Close()
-	err = a.logWriter.Close()
+	if a.logWriter != nil {
+		_ = a.contentWriter.Close()
+	}
+	if a.logWriter == nil {
+		_ = a.logWriter.Close()
+	}
 	return
 }
 
@@ -141,16 +152,23 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 	if err != nil {
 		return nil, err
 	}
-	lw := NewLogWriterClient(
-		serviceconnections.WithConnectTimeout(30*time.Second),
-		serviceconnections.WithHost(logHost),
-		serviceconnections.WithPort(logPort),
-	)
-	cw := NewContentWriterClient(
-		serviceconnections.WithConnectTimeout(30*time.Second),
-		serviceconnections.WithHost(contentWriterHost),
-		serviceconnections.WithPort(contentWriterPort),
-	)
+	var lw *LogWriterClient
+	var cw *ContentWriterClient
+
+	if logHost != "" {
+		lw = NewLogWriterClient(
+			serviceconnections.WithConnectTimeout(30*time.Second),
+			serviceconnections.WithHost(logHost),
+			serviceconnections.WithPort(logPort),
+		)
+	}
+	if contentWriterHost != "" {
+		cw = NewContentWriterClient(
+			serviceconnections.WithConnectTimeout(30*time.Second),
+			serviceconnections.WithHost(contentWriterHost),
+			serviceconnections.WithPort(contentWriterPort),
+		)
+	}
 	return NewArchivingCache(ca, lw, cw), nil
 }
 
