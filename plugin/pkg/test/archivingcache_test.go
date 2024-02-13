@@ -226,7 +226,6 @@ func TestConcurrentRequests(t *testing.T) {
 		rec.Add(1)
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			j := i % len(cases)
-			t.Parallel()
 
 			req := cases[j].Msg()
 			ctx := context.WithValue(serverCtx, resolve.CollectionIdKey{}, strconv.Itoa(j))
@@ -242,8 +241,6 @@ func TestConcurrentRequests(t *testing.T) {
 	}
 
 	t.Run("assert", func(t *testing.T) {
-		t.Parallel()
-
 		rec.Wait()
 		close(ch)
 
