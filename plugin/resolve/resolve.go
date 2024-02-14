@@ -10,6 +10,7 @@ import (
 
 	"github.com/coredns/coredns/core/dnsserver"
 	"github.com/coredns/coredns/plugin"
+	"github.com/coredns/coredns/plugin/metadata"
 	clog "github.com/coredns/coredns/plugin/pkg/log"
 	"github.com/coredns/coredns/plugin/pkg/rcode"
 	"github.com/coredns/coredns/plugin/pkg/reuseport"
@@ -75,10 +76,30 @@ func (e *Resolve) Resolve(ctx context.Context, request *dnsresolverV1.ResolveReq
 
 	ctx = context.WithValue(ctx, CollectionIdKey{}, request.GetCollectionRef().GetId())
 	ctx = context.WithValue(ctx, ExecutionIdKey{}, request.GetExecutionId())
+	// Usually this value is initialized by the server. When using the gRPC server
+	// we need to initialize it ourselves.
+	// See https://github.com/coredns/coredns/blob/8868454177bdd3e70e71bd52d3c0e38bcf0d77fd/core/dnsserver/server.go#L161
 	ctx = context.WithValue(ctx, dnsserver.Key{}, &dnsserver.Server{
 		Addr: e.addr,
 	})
 	ctx = context.WithValue(ctx, dnsserver.LoopKey{}, 0)
+	// TODO
+	//
+	// When using metadata plugin to get the upstream proxy used by the forward plugin
+	// the context is not initialized with metadata so we need to initialize
+	// it ourselves.
+	//
+	// The metadata.ContextWithMetadata function is only exported for use by provider tests
+	// so this is a bit of a HACK.
+	//
+	// It can be argued that the resolver plugin can be removed
+	// and that veidemann-frontier should just use normal DNS resolution.
+	// The downside of this is that it will not be able to cache
+	// DNS resolution per collection or know which collection to write
+	// DNS requests to. A possible solution is to just write all DNS resolutions
+	// to a single "DNS" collection. This will simplify things and remove
+	// the need for a dnsresolver API as well.
+	ctx = metadata.ContextWithMetadata(ctx)
 
 	if rc, err := plugin.NextOrFailure(e.Name(), e.Next, ctx, w, req); err != nil {
 		err = &UnresolvableError{
