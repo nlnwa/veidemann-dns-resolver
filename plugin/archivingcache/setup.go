@@ -63,7 +63,7 @@ func (a *ArchivingCache) OnShutdown() (err error) {
 	if a.logWriter != nil {
 		_ = a.contentWriter.Close()
 	}
-	if a.logWriter == nil {
+	if a.logWriter != nil {
 		_ = a.logWriter.Close()
 	}
 	return
