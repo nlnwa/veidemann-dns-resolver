@@ -7,7 +7,7 @@ toolchain go1.21.6
 require (
 	github.com/allegro/bigcache v1.2.1
 	github.com/coredns/caddy v1.1.1
-	github.com/coredns/coredns v1.11.1
+	github.com/coredns/coredns v1.11.2
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/miekg/dns v1.1.58
@@ -24,7 +24,6 @@ require (
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dnstap/golang-dnstap v0.4.0 // indirect
 	github.com/farsightsec/golang-framestream v0.3.0 // indirect
 	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
