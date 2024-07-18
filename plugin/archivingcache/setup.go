@@ -157,14 +157,12 @@ func parseArchivingCache(c *caddy.Controller) (*ArchivingCache, error) {
 
 	if logHost != "" {
 		lw = NewLogWriterClient(
-			serviceconnections.WithConnectTimeout(30*time.Second),
 			serviceconnections.WithHost(logHost),
 			serviceconnections.WithPort(logPort),
 		)
 	}
 	if contentWriterHost != "" {
 		cw = NewContentWriterClient(
-			serviceconnections.WithConnectTimeout(30*time.Second),
 			serviceconnections.WithHost(contentWriterHost),
 			serviceconnections.WithPort(contentWriterPort),
 		)

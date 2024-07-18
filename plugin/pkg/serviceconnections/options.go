@@ -81,9 +81,7 @@ func (opts *connectionOptions) connectService() (*grpc.ClientConn, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 
-	dialCtx, dialCancel := context.WithTimeout(context.Background(), opts.connectTimeout)
-	defer dialCancel()
-	clientConn, err := grpc.DialContext(dialCtx, opts.Addr(), dialOpts...)
+	clientConn, err := grpc.NewClient(opts.Addr(), dialOpts...)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("failed to connectService to %s at %s within %s: %s", opts.serviceName, opts.Addr(),
@@ -110,11 +108,5 @@ func WithPort(port int) ConnectionOption {
 func WithDialOptions(dialOption ...grpc.DialOption) ConnectionOption {
 	return newFuncConnectionOption(func(c *connectionOptions) {
 		c.dialOptions = dialOption
-	})
-}
-
-func WithConnectTimeout(connectTimeout time.Duration) ConnectionOption {
-	return newFuncConnectionOption(func(c *connectionOptions) {
-		c.connectTimeout = connectTimeout
 	})
 }

@@ -21,9 +21,9 @@ func main() {
 	var opts []grpc.DialOption
 	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
-	conn, err := grpc.Dial(*serverAddr, opts...)
+	conn, err := grpc.NewClient(*serverAddr, opts...)
 	if err != nil {
-		fmt.Printf("Failed to dial: %v:", err)
+		fmt.Printf("Failed to create grpc client: %v\n", err)
 		os.Exit(1)
 	}
 	defer conn.Close()
